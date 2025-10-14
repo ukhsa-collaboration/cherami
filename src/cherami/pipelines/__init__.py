@@ -1,13 +1,10 @@
-from cherami.pipelines.base import BasePipeline
-from cherami.pipelines.orange_box import OrangeBoxPipeline
-from cherami.pipelines.registry import available_pipelines, get_pipeline, register_pipeline
-from cherami.pipelines.sarscov2 import SARSCoV2Pipeline
+from cherami.pipelines import implementations
+from cherami.pipelines.base import Pipeline
 
-__all__ = [
-    "BasePipeline",
-    "register_pipeline",
-    "get_pipeline",
-    "available_pipelines",
-    "SARSCoV2Pipeline",
-    "OrangeBoxPipeline",
-]
+PIPELINES: dict[str, type[Pipeline]] = {
+    "amr": implementations.AmrPipeline,
+    "orange_box": implementations.OrangeBoxPipeline,
+    "sarscov2": implementations.SARSCoV2Pipeline,
+}
+
+__all__ = ["implementations", "PIPELINES", "Pipeline"]

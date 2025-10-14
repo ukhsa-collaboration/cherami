@@ -1,6 +1,6 @@
 import pytest
 
-from cherami.pipelines.sarscov2 import SARSCoV2Pipeline
+from cherami.pipelines.implementations import SARSCoV2Pipeline
 
 
 @pytest.fixture

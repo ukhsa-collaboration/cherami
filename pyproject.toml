@@ -10,8 +10,8 @@ requires-python = ">=3.12"
 dependencies = [
     "click>=8.1.8",
     "climb-onyx-client>=4.8.2",
-    "colorama>=0.4.6",
     "kubernetes>=33.1.0",
+    "pandas>=2.3.3",
     "varys-client>=1.1.0",
 ]
 

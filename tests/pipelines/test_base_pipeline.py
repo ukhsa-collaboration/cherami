@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from cherami.pipelines.base import BasePipeline, PipelineConfig
+from cherami.pipelines.base import Pipeline, PipelineConfig
 
 
-class DummyPipeline(BasePipeline):
+class DummyPipeline(Pipeline):
     def __init__(self, config: PipelineConfig, proc_names: dict[str, list[int]] | None = None):
         self._config = config
         self._proc_names = proc_names or {}

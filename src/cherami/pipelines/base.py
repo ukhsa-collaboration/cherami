@@ -1,5 +1,6 @@
 import csv
 import logging
+import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PipelineConfig:
-    """Stores the configuration for a pipeline. Should be implemented for each pipeline separately."""
+    """Configuration describing how to run a pipeline."""
 
     ## general
     name: str
@@ -36,46 +37,54 @@ class PipelineConfig:
     job_timeout: int
 
 
-class BasePipeline(ABC):
-    """
-    Abstract class for defining a pipeline.
+class Pipeline(ABC):
+    """Abstract base class for pipelines. All pipelines must inherit from this.
 
-    Attributes:
-        config: `PipelineConfig` object containing configuration for the pipeline.
-        proc_names: Optional dictionary mapping process names to allowed exit codes for evaluating
-                    the nextflow trace file. If not provided, all processes must exit with code 0
-                    for the pipeline to be considered successful.
+    Subclasses must include a `PipelineConfig` via the `config` property and provide a
+    `generate_samplesheet` implementation that prepares their inputs.
     """
+
+    pipeline_name: str
 
     @property
     @abstractmethod
     def config(self) -> PipelineConfig:
-        """Pipeline configuration implemented via a PipelineConfig dataclass."""
-        ...
+        """Configuration required to run a pipeline job.
+
+        Returns:
+            A `PipleineConfig` object containing the execution settings for the pipeline.
+        """
 
     @property
     def proc_names(self) -> dict[str, list[int]]:
-        """
-        Nextflow process names mapped to allowed exit codes for trace file evaluation.
-        Override if nextflow proccess have allowed exit codes to be handelled in the orchestator
+        """Optional mapping of Nextflow process names to their allowed exit codes.
+
+        Returns:
+            Process-specific allowed exit codes used when evaluating trace files. When
+            empty, every process must exit with code 0.
         """
         return {}
 
     @abstractmethod
-    def generate_samplesheet(self, samples: list[str]) -> str | None: ...
-    """
-    Generates a samplesheet for the pipeline if applicable.
-    Args:
-        samples: List of sample identifiers.
+    def generate_samplesheet(self, samples: list[str], job_id: str) -> Path | None:
+        """Creates a samplesheet for the provided sample IDs.
 
-    Returns:
-        Path to the generated samplesheet file or None if not applicable.
-    """
+        Implementations should create a samplesheet file for all samples being input into the pipeline.
+        Samplesheet format is pipeline-specific. The returned path will be passed to the pipeline's job to be
+        used as input.
+
+        Arguments:
+            samples: Sample identifiers the pipeline will process.
+            job_id: Identifier associated with the orchestrated job. Implementations can
+                use this to name any generated files.
+
+        Returns:
+            Path to the generated samplesheet, or `None` when no samplesheet
+            is required.
+        """
 
     def _check_paths(self) -> None:
-        """
-        Check if configured paths exist and log warnings if they don't.
-        """
+        """Log warnings whenever configured filesystem locations are missing."""
         if not self.config.work_dir.exists():
             logger.warning("Configured work_dir '%s' does not exist", self.config.work_dir)
 
@@ -86,26 +95,29 @@ class BasePipeline(ABC):
             logger.warning("Configured nf_config_path '%s' does not exist", self.config.nf_config_path)
 
     def validate(self) -> None:
-        """
-        Validate pipeline configuration.
-        """
+        """Run validation on the pipeline configuration."""
         self._check_paths()
 
     ## inspired by https://github.com/CLIMB-TRE/roz/blob/bd0ec88b29f9fd0fc18ca1cc500ad385128c121a/roz_scripts/mscape/mscape_ingest_validation.py#L997
     def evaluate_exit_status(self, trace_file: Path) -> bool:
-        """
-        Parses a nextflow trace file to determine if the pipeline completed successfully.
+        """Ensures processes recorded in a Nextflow trace file all exited with allowed codes.
 
-        By default, all processes must exit with code 0 for the pipeline to be considered successful.
-        If `proc_names` is provided, only those processes are checked against their allowed exit codes
-        for the pipeline to be considered successful.
+        This uses the `proc_names` property to determine which processes to check and their
+        allowed exit codes. If `proc_names` is empty, all processes must have exited with
+        code 0.
 
-        Args:
-            trace_file: Path to the nextflow trace file.
+        Arguments:
+            trace_file: Path to the tab-delimited Nextflow trace file for a job run.
 
         Returns:
-            True if the pipeline completed successfully, False otherwise.
+            `True` if the trace file exists and every relevant process satisfies its
+            defined exit code, otherwise `False`.
         """
+        if not trace_file.exists():
+            ## TODO: do we re-queue the job if trace file not found?
+            ## Decide on wider retry strategy
+            return False
+
         try:
             with trace_file.open("r") as trace_fh:
                 reader = csv.DictReader(trace_fh, delimiter="\t")
@@ -134,21 +146,38 @@ class BasePipeline(ABC):
                             return False
                 return True
         except FileNotFoundError:
-            ## TODO: do we re-queue the job if trace file not found?
-            ## Decide on wider retry strategy
-            logger.error("Trace file %s not found", trace_file)
             return False
 
-    def create_job_manifest(self, samplesheet_path: str | None, job_id: str) -> dict[str, Any]:
-        """
-        Creates a Kubernetes Job manifest for the pipeline.
+    def should_run(self, sample_id: str) -> bool:
+        """Determine whether the pipeline should run for the given sample.
 
-        Args:
-            samplesheet_path: Path to the samplesheet file, if applicable.
-            job_id: Unique job ID for this pipeline run.
+        The default implementation always returns True. Override this to implement decision logic based
+        on sample metadata. For example, query onyx to check if the sample has sufficient read count.
+        When this returns False, the worker calls `on_skip()` instead of launching the pipeline.
+
+        Arguments:
+            sample_id: Identifier provided by the upstream system.
 
         Returns:
-            A dictionary representing the Kubernetes Job manifest.
+            `True` when the pipeline should run, otherwise `False`.
+        """
+
+        return True
+
+    def create_job_manifest(self, samplesheet_path: Path | None, job_id: str) -> dict[str, Any]:
+        """Creates the Kubernetes Job manifest for a pipeline run.
+
+        This method constructs a complete Kubernetes Job spec using the pipeline config. The manifest
+        includes volume mounts, environment variables (Onyx credentials, AWS config), resource limits,
+        and the Nextflow command assembled from config fields. The job runs a single pod. Kubernetes
+        will restart the pod up to backoff_limit times if it fails.
+
+        Arguments:
+            samplesheet_path: Optional path to a samplesheet to pass to Nextflow via --samplesheet.
+            job_id: Unique identifier used for job name and per-job output/work directories.
+
+        Returns:
+            Kubernetes Job manifest dictionary to submit via `create_namespaced_job`.
         """
         job_name = f"{self.config.name}-{job_id}"
 
@@ -159,6 +188,15 @@ class BasePipeline(ABC):
         pod_env_vars = [
             {"name": "NXF_WORK", "value": str(nxf_work_dir)},
             {"name": "NXF_HOME", "value": str(nxf_home_dir)},
+            {"name": "ONYX_TOKEN", "value": str(os.environ.get("ONYX_TOKEN"))},
+            {"name": "ONYX_DOMAIN", "value": str(os.environ.get("ONYX_DOMAIN"))},
+            {"name": "AWS_SECRET_ACCESS_KEY", "value": str(os.environ.get("AWS_SECRET_ACCESS_KEY"))},
+            {"name": "AWS_ACCESS_KEY_ID", "value": str(os.environ.get("AWS_ACCESS_KEY_ID"))},
+            {"name": "AWS_ENDPOINT_URL", "value": str(os.environ.get("AWS_ENDPOINT_URL"))},
+            {
+                "name": "AWS_REQUEST_CHECKSUM_CALCULATION",
+                "value": str(os.environ.get("AWS_REQUEST_CHECKSUM_CALCULATION")),
+            },
         ]
 
         nextflow_cmd = ["nextflow"]
@@ -173,10 +211,10 @@ class BasePipeline(ABC):
         if self.config.output_dir:
             nextflow_cmd.extend(["--outdir", str(job_output_dir)])
         if samplesheet_path:
-            nextflow_cmd.extend(["--samplesheet", samplesheet_path])
+            nextflow_cmd.extend(["--samplesheet", str(samplesheet_path)])
 
         command = " ".join(nextflow_cmd)
-        logger.info("Nextflow command: %s", command)
+        logger.debug("Nextflow command: %s", command)
 
         return {
             "apiVersion": "batch/v1",
