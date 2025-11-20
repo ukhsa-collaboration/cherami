@@ -1,5 +1,5 @@
 from cherami.pipelines import implementations
-from cherami.pipelines.base import Pipeline
+from cherami.pipelines.pipeline import Pipeline, PipelineConfig
 
 PIPELINES: dict[str, type[Pipeline]] = {
     "amr": implementations.AmrPipeline,
@@ -7,4 +7,4 @@ PIPELINES: dict[str, type[Pipeline]] = {
     "sarscov2": implementations.SARSCoV2Pipeline,
 }
 
-__all__ = ["implementations", "PIPELINES", "Pipeline"]
+__all__ = ["implementations", "PIPELINES", "Pipeline", "PipelineConfig"]

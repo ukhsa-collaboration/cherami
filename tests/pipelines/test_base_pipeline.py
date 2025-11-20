@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from cherami.pipelines.base import Pipeline, PipelineConfig
+from cherami.pipelines import Pipeline, PipelineConfig
 
 
 class DummyPipeline(Pipeline):

@@ -9,7 +9,7 @@ from typing import Any
 from kubernetes.client.api import BatchV1Api
 from kubernetes.client.exceptions import ApiException
 
-from cherami.pipelines.base import Pipeline
+from cherami.pipelines import Pipeline
 
 logger = logging.getLogger(__name__)
 

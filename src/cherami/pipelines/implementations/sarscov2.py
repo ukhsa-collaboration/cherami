@@ -5,7 +5,7 @@ from typing import Any
 
 from onyx import OnyxClient
 
-from cherami.pipelines.base import Pipeline, PipelineConfig
+from cherami.pipelines import Pipeline, PipelineConfig
 from cherami.utils import init_onyx
 
 logger = logging.getLogger(__name__)

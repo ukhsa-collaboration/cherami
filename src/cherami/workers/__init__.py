@@ -1,5 +1,5 @@
 from cherami.workers import amr, orange_box
-from cherami.workers.base import Worker
+from cherami.workers.worker import Worker
 
 WORKERS: dict[str, type[Worker]] = {
     "orange_box": orange_box.OrangeBoxWorker,
@@ -8,4 +8,5 @@ WORKERS: dict[str, type[Worker]] = {
 
 __all__ = [
     "WORKERS",
+    "Worker",
 ]

@@ -12,8 +12,7 @@ import click
 from cherami.pipeline_runner import PipelineRunner
 from cherami.pipelines import PIPELINES
 from cherami.utils import init_kubernetes, init_logging, setup_queue_logging
-from cherami.workers import WORKERS
-from cherami.workers.base import Worker
+from cherami.workers import WORKERS, Worker
 
 logger = logging.getLogger(__name__)
 
