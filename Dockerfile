@@ -1,9 +1,23 @@
-FROM python:3.12-slim-trixie
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-ADD . /cherami
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+RUN groupadd --system --gid 999 nonroot \
+ && useradd --system --gid 999 --uid 999 --create-home nonroot
 
 WORKDIR /cherami
-RUN uv sync --locked
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+ENV UV_TOOL_BIN_DIR=/usr/local/bin
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --locked --no-install-project --no-dev
 
-CMD ["uv", "run", "cherami"]
+
+COPY . /cherami
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-dev
+
+ENV PATH="/cherami/.venv/bin:$PATH"
+ENTRYPOINT []
+USER nonroot
+
+CMD ["cherami"]
