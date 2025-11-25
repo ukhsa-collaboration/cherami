@@ -125,22 +125,44 @@ class PipelineRunner:
         errors = []
 
         try:
-            try:
-                samplesheet_path = pipeline.generate_samplesheet([sample_id], job_uuid)
-            except Exception as e:
-                errors.append(f"samplesheet_generation_failed: {e}")
-                return False, errors
-
-            job_manifest = pipeline.create_job_manifest(
-                samplesheet_path=samplesheet_path,
-                job_id=job_uuid,
-            )
-
-            logger.info("Creating job %s for pipeline %s", job_name, pipeline.config.name)
-            self.k8_api.create_namespaced_job(
-                body=job_manifest,
+            ## to handle situations where a worker crashes with jobs pending, here poll for an existing job with same
+            ## name, if this returns something we can assume the job is already running or has completed within the k8
+            ## TTL window so can "re-attach" to it and move straight to the validation loop. If the job isnt found, it
+            ## is created like normal
+            jobs = self.k8_api.list_namespaced_job(
                 namespace=pipeline.config.namespace,
+                field_selector=f"metadata.name={job_name}",
+                limit=1,
             )
+            job_exists = bool(jobs.items)
+
+            if not job_exists:
+                try:
+                    samplesheet_path = pipeline.generate_samplesheet([sample_id], job_uuid)
+                except Exception as e:
+                    errors.append(f"samplesheet_generation_failed: {e}")
+                    return False, errors
+
+                job_manifest = pipeline.create_job_manifest(
+                    samplesheet_path=samplesheet_path,
+                    job_id=job_uuid,
+                )
+
+                logger.info("Creating job %s for pipeline %s", job_name, pipeline.config.name)
+                try:
+                    self.k8_api.create_namespaced_job(
+                        body=job_manifest,
+                        namespace=pipeline.config.namespace,
+                    )
+                except ApiException as e:
+                    ## if somehow the first check missed an existing job capture the 409 error here and let it continue
+                    ## to the validation loop, otherwise raise any other exceptions
+                    if e.status == 409:
+                        logger.warning("Job %s already exists; attaching to existing run", job_name)
+                    else:
+                        raise
+            else:
+                logger.info("Attaching to existing job %s for pipeline %s", job_name, pipeline.config.name)
 
             reported_failed_pods = 0
 
