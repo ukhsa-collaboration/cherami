@@ -10,9 +10,9 @@ VARYS_LOG_PATH = Path("./amr_varys.log")
 class AmrWorker(Worker):
     def __init__(self) -> None:
         super().__init__(
-            worker_name="amr",
-            listen_exchange="cherami_test",
-            listen_queue_suffix="amr_pipeline",
+            worker_name="ukhsa_amr_worker",
+            listen_exchange="downstream-ukhsa_orange_box-synthscape",
+            listen_queue_suffix="ukhsa_amr_worker",
             varys_config_path=VARYS_CONFIG_PATH,
             varys_log_path=VARYS_LOG_PATH,
         )
