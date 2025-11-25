@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from cherami.pipelines import Pipeline, PipelineConfig
+from cherami.pipelines.pipeline import Pipeline, PipelineConfig
 
 logger = logging.getLogger(__name__)
 

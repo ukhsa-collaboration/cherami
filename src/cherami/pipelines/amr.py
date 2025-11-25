@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 from onyx import OnyxClient, OnyxConfig, OnyxEnv
 
-from cherami.pipelines import Pipeline, PipelineConfig
+from cherami.pipelines.pipeline import Pipeline, PipelineConfig
 
 logger = logging.getLogger(__name__)
 

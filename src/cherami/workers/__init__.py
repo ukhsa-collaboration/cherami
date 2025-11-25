@@ -5,8 +5,3 @@ WORKERS: dict[str, type[Worker]] = {
     "orange_box": orange_box.OrangeBoxWorker,
     "amr": amr.AmrWorker,
 }
-
-__all__ = [
-    "WORKERS",
-    "Worker",
-]

@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from cherami.pipelines.implementations.amr import AmrPipeline
-from cherami.workers import Worker
+from cherami.pipelines import AmrPipeline
+from cherami.workers.worker import Worker
 
 VARYS_CONFIG_PATH = Path("./conf/varys.cfg")
 VARYS_LOG_PATH = Path("./amr_varys.log")

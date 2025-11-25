@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from cherami.pipelines.implementations.orange_box import OrangeBoxPipeline
-from cherami.workers import Worker
+from cherami.pipelines import OrangeBoxPipeline
+from cherami.workers.worker import Worker
 
 VARYS_CONFIG_PATH = Path("./conf/varys.cfg")
 VARYS_LOG_PATH = Path("./orange_box_varys.log")

@@ -95,7 +95,7 @@ Create a new module under `src/cherami/workers/` that subclasses `Worker`. In `_
 ```python
 from pathlib import Path
 
-from cherami.pipelines.implementations.amr import AmrPipeline
+from cherami.pipelines import AmrPipeline
 from cherami.workers.base import Worker
 
 class ExampleWorker(Worker):
@@ -143,7 +143,7 @@ Write tests for any custom logic in your worker (overridden hooks, custom valida
 
 Pipelines are configuration templates that describe how to run a Nextflow workflow as a Kubernetes job. They specify resource requests and limits, the Nextflow command to run, where to write output, and how to validate success. When a worker calls `PipelineRunner.run_pipeline()`, the runner uses the pipeline template to construct a Kubernetes job manifest and submit it.
 
-Pipelines live in `src/cherami/pipelines/implementations/` and inherit from the `Pipeline` base class. The base class handles job manifest generation, trace file evaluation, and validation. Subclasses provide a `PipelineConfig` and implement `generate_samplesheet()` to prepare inputs for their specific Nextflow workflow.
+Pipelines live in `src/cherami/pipelines/` and inherit from the `Pipeline` base class. The base class handles job manifest generation, trace file evaluation, and validation. Subclasses provide a `PipelineConfig` and implement `generate_samplesheet()` to prepare inputs for their specific Nextflow workflow.
 
 ##### Pipeline configuration and job manifests
 
@@ -171,10 +171,10 @@ The `should_run(sample_id: str)` method lets you gate execution based on sample 
 
 ###### 1. Defining the pipeline template
 
-Create a new module in `src/cherami/pipelines/implementations/` and subclass `Pipeline`. Define a `config` property that returns a `PipelineConfig` with all the required settings. Implement `generate_samplesheet()` to prepare inputs specific to your workflow.
+Create a new module in `src/cherami/pipelines/` and subclass `Pipeline`. Define a `config` property that returns a `PipelineConfig` with all the required settings. Implement `generate_samplesheet()` to prepare inputs specific to your workflow.
 
 ```python
-from cherami.pipelines.base import Pipeline, PipelineConfig
+from cherami.pipelines.pipeline import Pipeline, PipelineConfig
 
 class MpoxPipeline(Pipeline):
     pipeline_name = "mpox-pipeline"
@@ -242,10 +242,15 @@ def should_run(self, sample_id: str) -> bool:
 
 ###### 2. Registering the pipeline
 
-Pipelines do not need explicit registration in a dictionary like workers do. They are used directly by workers. However, ensure the module is imported and available by adding an import to `src/cherami/pipelines/implementations/__init__.py`:
+Update `src/cherami/pipelines/__init__.py` to import your pipeline and add it to the `PIPELINES` map:
 
 ```python
-from cherami.pipelines.implementations.mpox import MpoxPipeline
+from cherami.pipelines.mpox import MpoxPipeline
+
+PIPELINES = {
+    "mpox": MpoxPipeline,
+    # ...
+}
 ```
 
 ###### 3. Add tests for the new pipeline

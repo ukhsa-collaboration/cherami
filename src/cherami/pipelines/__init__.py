@@ -1,10 +1,8 @@
-from cherami.pipelines import implementations
-from cherami.pipelines.pipeline import Pipeline, PipelineConfig
+from cherami.pipelines.amr import AmrPipeline
+from cherami.pipelines.orange_box import OrangeBoxPipeline
+from cherami.pipelines.pipeline import Pipeline, PipelineConfig  # noqa: F401
 
 PIPELINES: dict[str, type[Pipeline]] = {
-    "amr": implementations.AmrPipeline,
-    "orange_box": implementations.OrangeBoxPipeline,
-    "sarscov2": implementations.SARSCoV2Pipeline,
+    "amr": AmrPipeline,
+    "orange_box": OrangeBoxPipeline,
 }
-
-__all__ = ["implementations", "PIPELINES", "Pipeline", "PipelineConfig"]
