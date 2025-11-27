@@ -1,17 +1,17 @@
 import json
 import logging
 import time
-from abc import ABC, abstractmethod
 from multiprocessing.synchronize import Event
 from pathlib import Path
 from typing import Any
 
+from cherami.config import WorkerConfig
 from cherami.pipeline_runner import PipelineRunner
 from cherami.pipelines import Pipeline
 from cherami.utils import init_kubernetes, init_varys
 
 
-class Worker(ABC):
+class Worker:
     """Defines a base template for all workers, consuming a RabbitMQ queue and launching pipelines.
 
     The base class implements orchestration methods common to every worker. It
@@ -33,27 +33,19 @@ class Worker(ABC):
         publish_exchange: Optional exchange for completion messages.
     """
 
-    def __init__(
-        self,
-        *,
-        worker_name: str,
-        listen_exchange: str,
-        listen_queue_suffix: str,
-        varys_config_path: Path,
-        varys_log_path: Path,
-        publish_queue_suffix: str | None = None,
-        publish_exchange: str | None = None,
-    ) -> None:
-        self.worker_name: str = worker_name
-        self.listen_exchange: str = listen_exchange
-        self.listen_queue_suffix: str = listen_queue_suffix
-        self.varys_config_path: Path = varys_config_path
-        self.varys_log_path: Path = varys_log_path
-        self.publish_queue_suffix: str | None = publish_queue_suffix
-        self.publish_exchange: str | None = publish_exchange
+    def __init__(self, worker_config: WorkerConfig, pipeline: Pipeline) -> None:
+        self.config = worker_config
+        self.pipeline = pipeline
+        self.worker_name: str = worker_config.worker_name
+        self.listen_exchange: str = worker_config.listen_exchange
+        self.listen_queue_suffix: str = worker_config.listen_queue_suffix
+        self.varys_config_path: Path = worker_config.varys_config_path
+        self.varys_log_path: Path = worker_config.varys_log_path
+        self.publish_queue_suffix: str | None = worker_config.publish_queue_suffix
+        self.publish_exchange: str | None = worker_config.publish_exchange
         self._varys_client: Any
         self._runner: PipelineRunner
-        self.logger = logging.getLogger(f"cherami.workers.{worker_name}")
+        self.logger = logging.getLogger(f"cherami.workers.{worker_config.worker_name}")
         self._retry_counts: dict[str, int] = {}
 
     def on_skip(self, message: Any) -> None:
@@ -131,17 +123,6 @@ class Worker(ABC):
         """
         self._varys_client.acknowledge_message(message)
         ## TODO: consider publishing to an error queue if configured
-
-    @property
-    @abstractmethod
-    def pipeline(self) -> Pipeline:
-        """Pipeline instance that this worker will run.
-
-        Subclasses MUST implement this property to bind a worker to a specific pipeline.
-
-        Returns:
-            An instance of a `BasePipeline` subclass for a given pipeline.
-        """
 
     def run(self, sample_log: Path, shutdown_event: Event) -> None:
         """Main worker loop, consuming messages and launching pipelines as required.

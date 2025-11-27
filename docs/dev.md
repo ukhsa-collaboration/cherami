@@ -84,35 +84,23 @@ Workers implement the message queue driven managment. Each worker binds to a spe
 
 The base worker provides a full set of methods to handle an incoming sample. When a worker spawns, it initialises connections to RabbitMQ (via Varys) and Kubernetes, and will continually listen on its configured message queue. For each message received, the worker reads the payload, checks whether the configured pipeline should run for that sample, and if so, uses the `PipelineRunner` to actually execute the job in k8s. The worker tracks retry attempts per sample and handles message acknowledgment based on whether the pipeline succeeded, failed, or should be retried.
 
-To function worker subclasses only need to implement `get_pipeline()` to specify which pipeline template the worker should use. Everything else is handled by the base class, though you can override hook methods if you need custom behavior at specific events.
+Workers receive their pipeline via the config file, not via a class attribute. Each worker entry in the config MUST include a `pipeline_name` that maps to one of the registered pipelines in `cherami.pipelines.PIPELINES`.
 
 ##### Adding a new Worker
 
 ###### 1. Implement the worker
 
-Create a new module under `src/cherami/workers/` that subclasses `Worker`. In `__init__`, pass the worker metadata to the base class. In `get_pipeline()`, return an instance of the pipeline you want to run.
+Create a new module under `src/cherami/workers/` that subclasses `Worker`. The CLI will construct the worker with a `WorkerConfig` and the pipeline instance resolved from the config's `pipeline_name`. Override hooks if you need custom behaviour.
 
 ```python
-from pathlib import Path
-
+from cherami.config import WorkerConfig
 from cherami.pipelines import AmrPipeline
-from cherami.workers.base import Worker
+from cherami.workers.worker import Worker
 
 class ExampleWorker(Worker):
-    def __init__(self) -> None:
-        super().__init__(
-            worker_name="example",
-            listen_exchange="cherami_test",
-            listen_queue_suffix="example_queue",
-            varys_config_path=Path("./conf/varys.cfg"),
-            varys_log_path=Path("./example_varys.log"),
-            ## optional: publish to another queue when successful
-            ## publish_queue_suffix="downstream_queue",
-            ## publish_exchange="another_exchange",
-        )
-
-    def get_pipeline(self) -> AmrPipeline:
-        return AmrPipeline()
+    def __init__(self, worker_config: WorkerConfig, pipeline: AmrPipeline) -> None:
+        super().__init__(worker_config=worker_config, pipeline=pipeline)
+        ## override on_success/on_retry/etc if you need custom handling
 ```
 
 The `varys_config_path` should point to a JSON file containing RabbitMQ credentials and connection details. The `varys_log_path` is where Varys will write its own logs (separate from the worker logs).
@@ -125,7 +113,7 @@ Add your worker class to the `WORKERS` dictionary in `src/cherami/workers/__init
 
 ```python
 from cherami.workers import example
-from cherami.workers.base import Worker
+from cherami.workers.worker import Worker
 
 WORKERS: dict[str, type[Worker]] = {
     "example": example.ExampleWorker,
@@ -134,6 +122,26 @@ WORKERS: dict[str, type[Worker]] = {
 ```
 
 The key you choose here is the name you will use on the command line to start the worker. 
+
+###### 3. Configure the worker
+
+Update your config file to add a pipeline to a new worker:
+
+```json
+{
+  "workers": {
+    "example": {
+      "pipeline_name": "amr",
+      "listen_exchange": "cherami_test",
+      "listen_queue_suffix": "example_queue",
+      "publish_queue_suffix": null,
+      "publish_exchange": null,
+      "varys_config_path": "./conf/varys.cfg",
+      "varys_log_path": "./example_varys.log"
+    }
+  }
+}
+```
 
 ###### 4. Add tests
 
