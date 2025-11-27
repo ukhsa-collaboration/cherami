@@ -2,58 +2,23 @@ import csv
 import logging
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cherami.config import PipelineConfig
+
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class PipelineConfig:
-    """Configuration describing how to run a pipeline."""
-
-    ## general
-    name: str
-    version: str
-    path: str
-    ## compute
-    cpus: int
-    mem: str
-    cpu_limit: int
-    mem_limit: str
-    ## nf configs
-    nf_config_path: Path
-    nf_profiles: list[str]
-    nf_extra_args: list[str]
-    work_dir: Path
-    output_dir: Path
-    ## k8 configs
-    namespace: str
-    container: str
-    backoff_limit: int
-    max_retries: int
-    retry_timeout: int
-    job_timeout: int
 
 
 class Pipeline(ABC):
     """Abstract base class for pipelines. All pipelines must inherit from this.
 
-    Subclasses must include a `PipelineConfig` via the `config` property and provide a
-    `generate_samplesheet` implementation that prepares their inputs.
+    Subclasses accept a `PipelineConfig` and provide a `generate_samplesheet`
+    implementation that prepares their inputs.
     """
 
-    pipeline_name: str
-
-    @property
-    @abstractmethod
-    def config(self) -> PipelineConfig:
-        """Configuration required to run a pipeline job.
-
-        Returns:
-            A `PipleineConfig` object containing the execution settings for the pipeline.
-        """
+    def __init__(self, config: PipelineConfig) -> None:
+        self.config = config
 
     @property
     def proc_names(self) -> dict[str, list[int]]:

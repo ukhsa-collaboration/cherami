@@ -5,37 +5,12 @@ from pathlib import Path
 import pandas as pd
 from onyx import OnyxClient, OnyxConfig, OnyxEnv
 
-from cherami.pipelines.pipeline import Pipeline, PipelineConfig
+from cherami.pipelines.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
 
 
 class AmrPipeline(Pipeline):
-    pipeline_name = "amr-pipeline"
-
-    @property
-    def config(self) -> PipelineConfig:
-        return PipelineConfig(
-            name=self.pipeline_name,
-            version="0.1.0",
-            path="/shared/team/projects/downstream_orchestration/gpha-mscape-nf-amr",
-            cpus=4,
-            mem="8G",
-            cpu_limit=4,
-            mem_limit="8G",
-            nf_config_path=Path("/shared/team/projects/downstream_orchestration/gpha-mscape-nf-amr/nextflow.config"),
-            nf_profiles=["docker"],
-            nf_extra_args=[],
-            work_dir=Path("/shared/team/projects/downstream_orchestration/nf_amr/work"),
-            output_dir=Path("/shared/team/projects/downstream_orchestration/nf_amr/output"),
-            namespace="ns-synthscape-ukhsa",
-            container="quay.io/climb-tre/nextflow",
-            backoff_limit=5,
-            max_retries=1,
-            retry_timeout=10,
-            job_timeout=3600,
-        )
-
     def generate_samplesheet(self, samples: list[str], job_id: str) -> Path | None:
         config = OnyxConfig(
             domain=os.environ[OnyxEnv.DOMAIN],

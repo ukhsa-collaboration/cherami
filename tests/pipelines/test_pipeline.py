@@ -2,17 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from cherami.pipelines import Pipeline, PipelineConfig
+from cherami.config import PipelineConfig
+from cherami.pipelines import Pipeline
 
 
 class DummyPipeline(Pipeline):
     def __init__(self, config: PipelineConfig, proc_names: dict[str, list[int]] | None = None):
-        self._config = config
+        super().__init__(config)
         self._proc_names = proc_names or {}
-
-    @property
-    def config(self) -> PipelineConfig:
-        return self._config
 
     @property
     def proc_names(self) -> dict[str, list[int]]:

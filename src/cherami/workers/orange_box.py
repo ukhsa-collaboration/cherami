@@ -1,22 +1,8 @@
-from pathlib import Path
-
+from cherami.config import WorkerConfig
 from cherami.pipelines import OrangeBoxPipeline
 from cherami.workers.worker import Worker
 
-VARYS_CONFIG_PATH = Path("./conf/varys.cfg")
-VARYS_LOG_PATH = Path("./orange_box_varys.log")
-
 
 class OrangeBoxWorker(Worker):
-    def __init__(self) -> None:
-        super().__init__(
-            worker_name="orange_box",
-            listen_exchange="cherami_test",
-            listen_queue_suffix="orange_box_queue",
-            varys_config_path=VARYS_CONFIG_PATH,
-            varys_log_path=VARYS_LOG_PATH,
-        )
-
-    @property
-    def pipeline(self) -> OrangeBoxPipeline:
-        return OrangeBoxPipeline()
+    def __init__(self, worker_config: WorkerConfig, pipeline: OrangeBoxPipeline) -> None:
+        super().__init__(worker_config=worker_config, pipeline=pipeline)

@@ -1,22 +1,8 @@
-from pathlib import Path
-
+from cherami.config import WorkerConfig
 from cherami.pipelines import AmrPipeline
 from cherami.workers.worker import Worker
 
-VARYS_CONFIG_PATH = Path("./conf/varys.cfg")
-VARYS_LOG_PATH = Path("./amr_varys.log")
-
 
 class AmrWorker(Worker):
-    def __init__(self) -> None:
-        super().__init__(
-            worker_name="ukhsa_amr_worker",
-            listen_exchange="downstream-ukhsa_orange_box-synthscape",
-            listen_queue_suffix="ukhsa_amr_worker",
-            varys_config_path=VARYS_CONFIG_PATH,
-            varys_log_path=VARYS_LOG_PATH,
-        )
-
-    @property
-    def pipeline(self) -> AmrPipeline:
-        return AmrPipeline()
+    def __init__(self, worker_config: WorkerConfig, pipeline: AmrPipeline) -> None:
+        super().__init__(worker_config=worker_config, pipeline=pipeline)
