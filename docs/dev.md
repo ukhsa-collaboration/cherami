@@ -74,6 +74,38 @@ An example helper script to test payloads is included in `./scripts/send.py` e.g
 uv run scripts/send.py
 ```
 
+### Debug commands
+
+#### run
+Run one or more pipelines directly against provided sample IDs.
+
+```
+cherami run SAMPLE_ID... --pipelines PIPELINE1,PIPELINE2
+```
+
+- `SAMPLE_ID...` - one or more sample identifiers.
+- `--pipelines` - comma-separated pipeline names from `cherami.pipelines.PIPELINES`. When omitted, all pipelines are attempted.
+The command will attempt to run a pipeline in the same manor as if recived from the message queue, and so is useful for debugging.
+
+#### describe
+Print rabbitmq bindings.
+
+```
+cherami describe [WORKER_NAMES...]
+```
+
+Shows listen exchange/queue and publish exchange/queue for the selected workers (or all workers when none are specified).
+
+#### evaluate
+Check whether pipelines would run for given samples without launching jobs.
+
+```
+cherami evaluate SAMPLE_ID... [--pipelines PIPELINE1,PIPELINE2]
+```
+
+Emits a tab-separated line per sample/pipeline with the `should_run` decision. Useful for dry-run validation of pipelines
+
+
 ### Workers and Pipelines
 
 Cherami has two broad concepts, workers and pipelines. Workers exist as multiprocessing processess and consume messages from RabbitMQ queues to coordinate pipeline execution. Pipelines are templates that describe how to construct and run Kubernetes jobs for Nextflow workflows.
@@ -185,7 +217,7 @@ Example pipeline entry:
 
 ##### Samplesheet generation
 
-The abstract method `generate_samplesheet(samples: list[str], job_id: str)` is where you define how to prepare inputs for your pipeline. This method receives a list of sample IDs (typically just one) and a unique job ID, and should return a path to a CSV samplesheet file (or `None` if the pipeline does not require a samplesheet).
+The abstract method `generate_samplesheet()` is where you define how to prepare inputs for your pipeline. This method receives a list of sample IDs (typically just one) and a unique job ID, and should return a path to a CSV samplesheet file (or `None` if the pipeline does not require a samplesheet).
 
 Implementations typically query Onyx to fetch any s3 file paths and metadata for each sample, then write a CSV with the columns the Nextflow workflow expects. The samplesheet path is passed to Nextflow via `--samplesheet` in the job command.
 
@@ -197,7 +229,7 @@ By default, every process must exit with code 0. If your pipeline has processes 
 
 ##### Decision logic
 
-The `should_run(sample_id: str)` method lets you implement decision logic based on sample metadata or other conditions. The default implementation returns `True` (always run). If you override it to return `False` for certain samples, the worker will skip those samples and call `on_skip()` instead of launching the pipeline. This is useful if you only want to run the pipeline for samples that meet certain criteria (e.g. run strep typing pipeline, only if > 5000 reads of strep).
+The `should_run()` method lets you implement decision logic based on sample metadata or other conditions. The default implementation returns `True` (always run). If you override it to return `False` for certain samples, the worker will skip those samples and call `on_skip()` instead of launching the pipeline. This is useful if you only want to run the pipeline for samples that meet certain criteria (e.g. run strep typing pipeline, only if > 5000 reads of strep).
 
 ##### Adding a new Pipeline
 
