@@ -45,15 +45,6 @@ Global options:
 --log-level <DEBUG|INFO|WARNING|ERROR> - default INFO
 --config <PATH> - path to cherami JSON config (or set CHERAMI_CONFIG)
 ```
-
-## Configuration
-
-cherami reads a single JSON configuration file, provided via the `--config` option or the `CHERAMI_CONFIG` environment variable. This file configures both the available pipelines and the workers that will run those pipelines.
-
-The `pipelines` section describes each pipeline, including its Nextflow configuration, working and output directories, and Kubernetes execution settings such as resource requests/limits, and retry behaviour. The `workers` section binds a worker name to a pipeline, and specifies the RabbitMQ exchanges, queue suffixes, and Varys configuration paths used to receive and publish messages.
-
-Further documentation for the config file can be found here.
-
 ## Sub-commands
 
 ### spawn
@@ -62,6 +53,14 @@ Main entrypoint. Launch one or more workers that listen for queue messages and r
 ```
 cherami --log worker.log spawn [WORKER_NAMES...]
 ```
+
+## Configuration
+
+cherami reads a single JSON configuration file, provided via the `--config` option or the `CHERAMI_CONFIG` environment variable. This file configures both the available pipelines and the workers that will run those pipelines.
+
+The `pipelines` section describes each pipeline, including its Nextflow configuration, working and output directories, and Kubernetes execution settings such as resource requests/limits, and retry behaviour. The `workers` section binds a worker name to a pipeline, and specifies the RabbitMQ exchanges, queue suffixes, and Varys configuration paths used to receive and publish messages.
+
+Further documentation for the config file can be found here.
 
 ## Development
 
