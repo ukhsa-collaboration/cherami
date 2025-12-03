@@ -24,7 +24,7 @@ Cherami expects an `--outdir` flag to store output directories.
 
 All outputs for the run must be output to this directory. Cherami does not care about the internal folder layout inside `--outdir` except for the trace file (see below). You are free to choose your own subdirectory structure under `--outdir` as long as the trace file requirement is met.
 
-### Write a Nextflow trace file to `<--outdir>/pipeline_trace.txt`
+### Write a Nextflow trace file to `<output_dir>/pipeline_trace.txt`
 
 Cherami validates pipeline success using the Nextflow trace file. To enable this in your nextflow pipeline see [docs](https://www.nextflow.io/docs/latest/reports.html)
 
@@ -33,7 +33,7 @@ Cherami validates pipeline success using the Nextflow trace file. To enable this
 
 From Cheramis perspective a run is considered successful when:
 - The Kubernetes job completes without exhausting retries or hitting a timeout.
-- The trace file exists at `<--outdir>/pipeline_trace.txt`.
+- The trace file exists at `<output_dir>/pipeline_trace.txt`.
 - All relevant processes in the trace file have an allowed exit code:
   - By default every process must have `0`.
   - Pipelines can optionally override this to only check a subset of processess, or allow for custom exit codes.
