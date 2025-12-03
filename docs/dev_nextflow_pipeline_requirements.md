@@ -1,8 +1,8 @@
 ## Nextflow pipeline requirements for Cherami
 
-This document describes what things a Nextflow pipeline needs in order to be able to be run via Cherami.
+This document describes what a Nextflow pipeline must implement in order to run via Cherami.
 
-Cherami builds a kubernetes job manifest for each pipeline run - and so has to build a nextflow command that will be excuted in that jobs container. Therefore it is important each nextflow pipeline expecting to run via cherami implements certain things in a uniform way.
+Cherami builds a Kubernetes Job manifest for each pipeline run, and constructs a Nextflow command that is executed inside that jobs container. Each Nextflow pipeline expected to run via Cherami therefore needs to implement certain things in a uniform way.
 
 ## The nextflow command
 
@@ -16,11 +16,11 @@ Ensure the following is implemented in the Nextflow pipeline:
 
 ### Accept a `--samplesheet` parameter
 
-Cherami expects a pipeline to accept inputs via a samplesheet flag (`--samplesheet`). The samplesheet should contain all inputs the pipeline needs to run, with a documented example.
+Cherami always expects a pipeline to accept inputs via a samplesheet flag (`--samplesheet`). The samplesheet should contain all inputs the pipeline needs to run, with a documented example.
 
-### Define a `params.outdir` parameter
+### Accept a `--outdir` parameter
 
-Cherami expects an `--outdir` flag to store output directories.
+Cherami always expects an `--outdir` flag to store output directories.
 
 All outputs for the run must be output to this directory. Cherami does not care about the internal folder layout inside `--outdir` except for the trace file (see below). You are free to choose your own subdirectory structure under `--outdir` as long as the trace file requirement is met.
 
@@ -36,6 +36,6 @@ From Cheramis perspective a run is considered successful when:
 - The trace file exists at `<output_dir>/pipeline_trace.txt`.
 - All relevant processes in the trace file have an allowed exit code:
   - By default every process must have `0`.
-  - Pipelines can optionally override this to only check a subset of processess, or allow for custom exit codes.
+  - Pipelines can optionally override this to only check a subset of processes, or allow for custom exit codes.
 
 If implementing custom exit codes for processess - ensure these a well documented, otherwise all that is needed is to enable the generation of this file in the correct location.
