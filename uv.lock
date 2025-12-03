@@ -96,7 +96,7 @@ requires-dist = [
     { name = "climb-onyx-client", specifier = ">=4.8.2" },
     { name = "kubernetes", specifier = ">=33.1.0" },
     { name = "pandas", specifier = ">=2.3.3" },
-    { name = "varys-client", specifier = ">=1.1.0" },
+    { name = "varys-client", git = "https://github.com/CLIMB-TRE/varys?branch=perms-test-dev" },
 ]
 
 [package.metadata.requires-dev]
@@ -676,15 +676,11 @@ wheels = [
 
 [[package]]
 name = "varys-client"
-version = "1.1.0"
-source = { registry = "https://pypi.org/simple" }
+version = "1.2.0"
+source = { git = "https://github.com/CLIMB-TRE/varys?branch=perms-test-dev#03b6c8f6b085f741aad923f300abf920a4084783" }
 dependencies = [
     { name = "pika" },
     { name = "setuptools" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/73/e9d72e4acc13af9c4c9640adf456bcf280e67a88f0e2ea0a2607b36fc9d4/varys_client-1.1.0.tar.gz", hash = "sha256:b2287efe30f1f3e09bca0668916a3494d2d19158bde58ed487df74bc2b600122", size = 24487, upload-time = "2025-02-14T18:42:27.48Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9f/49/d62631b8a2057df734489dc7a9b9f474eee97c20c19d0bd13db132d1771d/varys_client-1.1.0-py3-none-any.whl", hash = "sha256:a6be02a279c443204ccf570872045393f88480e66d372ed5145515ef9e976d8e", size = 24595, upload-time = "2025-02-14T18:42:26.551Z" },
 ]
 
 [[package]]

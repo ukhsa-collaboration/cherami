@@ -33,6 +33,9 @@ ignore = ["ANN401"]
 quote-style = "double"
 docstring-code-format = true
 
+[tool.uv.sources]
+varys-client = { git = "https://github.com/CLIMB-TRE/varys", branch = "perms-test-dev" }
+
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501", "ANN"]
 "scripts/*" = ["ALL"]
