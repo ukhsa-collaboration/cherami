@@ -1,39 +1,34 @@
+import csv
 import logging
-import os
 from pathlib import Path
 
-import pandas as pd
-from onyx import OnyxClient, OnyxConfig, OnyxEnv
+from onyx import OnyxClient
 
 from cherami.pipelines.pipeline import Pipeline
+from cherami.utils import init_onyx
 
 logger = logging.getLogger(__name__)
 
 
 class AmrPipeline(Pipeline):
     def generate_samplesheet(self, samples: list[str], job_id: str) -> Path | None:
-        config = OnyxConfig(
-            domain=os.environ[OnyxEnv.DOMAIN],
-            token=os.environ[OnyxEnv.TOKEN],
-        )
-
+        config = init_onyx()
         rows = []
         with OnyxClient(config) as client:
             for climb_id in samples:
                 try:
-                    ## TODO: remove depdency on pandas in future
-                    data = pd.DataFrame(client.filter(project="synthscape", climb_id=climb_id))
-                    read_1_link = data["human_filtered_reads_1"][0]
-                    read_2_link = data["human_filtered_reads_2"][0]
-                    taxon_reports_dir = data["taxon_reports"][0]
-                    taxon_reports_path = Path(str(taxon_reports_dir))
+                    climb_records = list(client.filter(project="synthscape", climb_id=climb_id))
+                    record = climb_records[0]
+                    read1_fastq = record["human_filtered_reads_1"]
+                    read_2_fastq = record["human_filtered_reads_2"]
+                    taxon_reports_dir = record["taxon_reports"]
                     row = {
                         "climb_id": climb_id,
-                        "human_filtered_reads_1": str(read_1_link),
-                        "human_filtered_reads_2": str(read_2_link),
-                        "taxon_reports_dir": str(taxon_reports_path),
-                        "kraken_assignments": str(taxon_reports_path / f"{climb_id}_PlusPF.kraken_assignments.tsv"),
-                        "kraken_report": str(taxon_reports_path / f"{climb_id}_PlusPF.kraken_report.json"),
+                        "human_filtered_reads_1": read1_fastq,
+                        "human_filtered_reads_2": read_2_fastq,
+                        "taxon_reports_dir": taxon_reports_dir,
+                        "kraken_assignments": f"{taxon_reports_dir}/{climb_id}_PlusPF.kraken_assignments.tsv",
+                        "kraken_report": f"{taxon_reports_dir}/{climb_id}_PlusPF.kraken_report.json",
                     }
                     rows.append(row)
                 except (KeyError, IndexError):
@@ -46,8 +41,12 @@ class AmrPipeline(Pipeline):
         samplesheet_dir.mkdir(parents=True, exist_ok=True)
         samplesheet_path = samplesheet_dir / f"amr_samplesheet_{job_id}.csv"
 
-        df = pd.DataFrame(rows)
-        df.to_csv(samplesheet_path, index=False)
+        fieldnames = list(rows[0].keys())
+
+        with samplesheet_path.open("w") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
 
         logger.debug(
             "Generated AMR samplesheet at %s",
