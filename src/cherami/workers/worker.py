@@ -60,7 +60,7 @@ class Worker:
         """
         self._varys_client.acknowledge_message(message)
 
-    def on_success(self, message: Any) -> None:
+    def on_success(self, message: Any, payload: dict[str, Any]) -> None:
         """Called when a pipeline run completes successfully.
 
         The default implementation publishes the message to `publish_exchange`/`publish_queue_suffix`
@@ -72,13 +72,14 @@ class Worker:
 
         Args:
             message: Varys message representing a sample that completed successfully.
+            payload: Parsed message payload used when republishing downstream.
         """
         ## if a worker configured a publish queue, this  send that message to the listen_exchange,
         ## unless the worker ALSO configures a publish_exchange, in which case use that
         if self.publish_queue_suffix:
             target_exchange = self.publish_exchange or self.listen_exchange
             self._varys_client.send(
-                message=message.body,
+                message=payload,
                 exchange=target_exchange,
                 queue_suffix=self.publish_queue_suffix,
             )
@@ -203,7 +204,7 @@ class Worker:
                             climb_id,
                         )
                         self._retry_counts.pop(climb_id, None)
-                        self.on_success(message)
+                        self.on_success(message, payload)
                     else:
                         self.logger.error(
                             "Pipeline %s failed for sample %s with errors: %s",
