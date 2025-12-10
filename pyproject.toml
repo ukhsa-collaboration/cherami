@@ -11,8 +11,7 @@ dependencies = [
     "click>=8.1.8",
     "climb-onyx-client>=4.8.2",
     "kubernetes>=33.1.0",
-    "pandas>=2.3.3",
-    "varys-client>=1.1.0",
+    "varys-client==1.2.0",
 ]
 
 [project.scripts]
@@ -32,9 +31,6 @@ ignore = ["ANN401"]
 [tool.ruff.format]
 quote-style = "double"
 docstring-code-format = true
-
-[tool.uv.sources]
-varys-client = { git = "https://github.com/CLIMB-TRE/varys", branch = "perms-test-dev" }
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["E501", "ANN"]

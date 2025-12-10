@@ -165,34 +165,34 @@ class Worker:
 
                     payload = json.loads(message.body)
 
-                    sample_id = payload.get("sample_id")
-                    job_uuid = payload.get("uuid")
+                    climb_id = payload.get("climb_id")
+                    job_uuid = payload.get("match_uuid")
 
                     ## TODO: Handle dodgy payloads
                     ## probably ack and log
 
-                    if not pipeline.should_run(sample_id):
+                    if not pipeline.should_run(climb_id):
                         self.logger.info(
                             "Criteria not met for sample %s; acknowledging message",
-                            sample_id,
+                            climb_id,
                         )
                         self.on_skip(message)
                         continue
 
                     max_retries = pipeline.config.max_retries
                     total_attempts = max_retries + 1
-                    current_attempt = self._retry_counts.get(sample_id, 0) + 1
-                    self._retry_counts[sample_id] = current_attempt
+                    current_attempt = self._retry_counts.get(climb_id, 0) + 1
+                    self._retry_counts[climb_id] = current_attempt
 
                     self.logger.info(
                         "Worker running sample %s (attempt %d/%d)",
-                        sample_id,
+                        climb_id,
                         current_attempt,
                         total_attempts,
                     )
                     result = self._runner.run_pipeline(
                         pipeline=pipeline,
-                        sample_id=sample_id,
+                        sample_id=climb_id,
                         job_uuid=job_uuid,
                     )
 
@@ -200,15 +200,15 @@ class Worker:
                         self.logger.info(
                             "Pipeline %s succeeded for sample %s",
                             pipeline.config.name,
-                            sample_id,
+                            climb_id,
                         )
-                        self._retry_counts.pop(sample_id, None)
+                        self._retry_counts.pop(climb_id, None)
                         self.on_success(message)
                     else:
                         self.logger.error(
                             "Pipeline %s failed for sample %s with errors: %s",
                             pipeline.config.name,
-                            sample_id,
+                            climb_id,
                             "|".join(result.errors),
                         )
 
@@ -216,10 +216,10 @@ class Worker:
                             self.logger.error(
                                 "Pipeline %s exhausted max retries for sample %s",
                                 pipeline.config.name,
-                                sample_id,
+                                climb_id,
                             )
-                            self.logger.error("Catastrophic error for sample %s", sample_id)
-                            self._retry_counts.pop(sample_id, None)
+                            self.logger.error("Catastrophic error for sample %s", climb_id)
+                            self._retry_counts.pop(climb_id, None)
                             self.on_sample_failure(message)
                         else:
                             if result.retry:
@@ -227,13 +227,13 @@ class Worker:
                                 self.logger.warning(
                                     "Retrying pipeline %s for sample %s (next attempt %d/%d)",
                                     pipeline.config.name,
-                                    sample_id,
+                                    climb_id,
                                     next_attempt,
                                     total_attempts,
                                 )
                                 self.on_retry(message)
                             else:
-                                self.logger.error("Catastrophic error for sample %s", sample_id)
+                                self.logger.error("Catastrophic error for sample %s", climb_id)
                                 self.on_sample_failure(message)
                 except Exception as e:
                     self.logger.exception("Unhandled exception in worker: %s", str(e))
