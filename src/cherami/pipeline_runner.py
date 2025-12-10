@@ -146,6 +146,7 @@ class PipelineRunner:
                 job_manifest = pipeline.create_job_manifest(
                     samplesheet_path=samplesheet_path,
                     job_id=job_uuid,
+                    climb_id=sample_id,
                 )
 
                 logger.info("Creating job %s for pipeline %s", job_name, pipeline.config.name)

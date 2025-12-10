@@ -129,7 +129,7 @@ class Pipeline(ABC):
 
         return True
 
-    def create_job_manifest(self, samplesheet_path: Path | None, job_id: str) -> dict[str, Any]:
+    def create_job_manifest(self, samplesheet_path: Path | None, job_id: str, climb_id: str | None) -> dict[str, Any]:
         """Creates the Kubernetes Job manifest for a pipeline run.
 
         This method constructs a complete Kubernetes Job spec using the pipeline config. The manifest
