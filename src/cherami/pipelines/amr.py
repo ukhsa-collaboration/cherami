@@ -27,8 +27,9 @@ class AmrPipeline(Pipeline):
                         "human_filtered_reads_1": read1_fastq,
                         "human_filtered_reads_2": read_2_fastq,
                         "taxon_reports_dir": taxon_reports_dir,
-                        "kraken_assignments": f"{taxon_reports_dir}/{climb_id}_PlusPF.kraken_assignments.tsv",
-                        "kraken_report": f"{taxon_reports_dir}/{climb_id}_PlusPF.kraken_report.json",
+                        ## taxon_reports_dir comes with trailing slash
+                        "kraken_assignments": f"{taxon_reports_dir}{climb_id}_PlusPF.kraken_assignments.tsv",
+                        "kraken_report": f"{taxon_reports_dir}{climb_id}_PlusPF.kraken_report.json",
                     }
                     rows.append(row)
                 except (KeyError, IndexError):
