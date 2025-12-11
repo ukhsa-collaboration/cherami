@@ -21,15 +21,15 @@ class AmrPipeline(Pipeline):
                     record = climb_records[0]
                     read1_fastq = record["human_filtered_reads_1"]
                     read_2_fastq = record["human_filtered_reads_2"]
-                    taxon_reports_dir = record["taxon_reports"]
+                    taxon_reports = record["taxon_reports"]
                     row = {
                         "climb_id": climb_id,
                         "human_filtered_reads_1": read1_fastq,
                         "human_filtered_reads_2": read_2_fastq,
-                        "taxon_reports_dir": taxon_reports_dir,
-                        ## taxon_reports_dir comes with trailing slash
-                        "kraken_assignments": f"{taxon_reports_dir}{climb_id}_PlusPF.kraken_assignments.tsv",
-                        "kraken_report": f"{taxon_reports_dir}{climb_id}_PlusPF.kraken_report.json",
+                        "taxon_reports": taxon_reports,
+                        # ## taxon_reports_dir comes with trailing slash
+                        # "kraken_assignments": f"{taxon_reports}{climb_id}_PlusPF.kraken_assignments.tsv",
+                        # "kraken_report": f"{taxon_reports}{climb_id}_PlusPF.kraken_report.json",
                     }
                     rows.append(row)
                 except (KeyError, IndexError):
