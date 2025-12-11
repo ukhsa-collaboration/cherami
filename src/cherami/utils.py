@@ -94,7 +94,7 @@ def init_varys(config_path: Path, log_path: Path) -> Varys:
     or nacked based on pipeline results.
 
     Args:
-        config_path: Path to Varys JSON config containing RabbitMQ credentials and connection details.
+        config_path: Path to Varys config containing RabbitMQ credentials and connection details.
         log_path: Path where Varys should write its debug logs.
 
     Returns:

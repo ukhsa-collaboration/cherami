@@ -3,11 +3,7 @@
 
 # cherami
 
-cherami is the mSCAPE orchestration module for pathogen pipelines, designed to run any workflow that occurs downstream of sample ingest. Its goal is to make pipeline orchestration straightforward to implement and operate across a diverse range of pipelines, by providing standard templates that integrate pipelines with Kubernetes for execution and RabbitMQ for orchestration.
-
-RabbitMQ is used as the message queue system to manage samples as they move through pipelines. Workers are configured to listen to queues, decide whether to launch or skip pipelines based on pipeline-specific logic, and can publish messages to new queues to chain pipelines together.
-
-Kubernetes is used as the execution platform for pipelines. For each incoming sample that should run, cherami creates a Kubernetes Job that wraps the appropriate Nextflow pipeline, submits it to the cluster, and monitors its status until completion, applying per-pipeline settings such as resource limits, and custom samplesheet generation.
+cherami is the mSCAPE orchestration module for pathogen pipelines, designed to run any workflow that occurs downstream of sample ingest. Its goal is to make pipeline orchestration straightforward to implement and operate across a diverse range of pipelines, by providing a standard method to integrate pipelines with Kubernetes for execution and RabbitMQ for orchestration.
 
 ## Installation
 
@@ -43,7 +39,7 @@ Global options:
 --sample-log <PATH> - File path for per-pipeline results (default ./sample_log.jsonl)
 --log <PATH> - log file path; logs to stderr when omitted
 --log-level <DEBUG|INFO|WARNING|ERROR> - default INFO
---config <PATH> - path to cherami JSON config (or set CHERAMI_CONFIG)
+--config <PATH> - path to cherami config (or set CHERAMI_CONFIG)
 ```
 ## Sub-commands
 
@@ -51,17 +47,25 @@ Global options:
 Main entrypoint. Launch one or more workers that listen for queue messages and run pipelines.
 
 ```
-cherami --log worker.log spawn [WORKER_NAMES...]
+cherami --config <config_file> --log worker.log spawn [WORKER_NAMES...]
 ```
 
 ## Configuration
 
-cherami reads a single JSON configuration file, provided via the `--config` option or the `CHERAMI_CONFIG` environment variable. This file configures both the available pipelines and the workers that will run those pipelines.
+cherami requires a JSON configuration file, provided via the `--config` option or the `CHERAMI_CONFIG` environment variable. This file configures both the available pipelines and the workers that will run those pipelines. This configuration is required for cherami to run. Examples are provided in the `configs` folder.
 
-The `pipelines` section describes each pipeline, including its Nextflow configuration, working and output directories, and Kubernetes execution settings such as resource requests/limits, and retry behaviour. The `workers` section binds a worker name to a pipeline, and specifies the RabbitMQ exchanges, queue suffixes, and Varys configuration paths used to receive and publish messages.
-
-Further documentation for the config file can be found here.
+Further documentation for the config file can be found [here](docs/dev_config.md).
 
 ## Development
+
+### Implementation
+
+Cherami uses 2 systems, Kubernetes for job execution and RabbitMQ for sample orchestration.
+
+RabbitMQ is used as the message queue system to manage samples as they move through pipelines. Cherami deploys Workers that are configured to listen to queues, decide whether to launch (or skip) pipelines based on pipeline-specific decision logic. They can also publish messages to new queues to chain pipelines together.
+
+Kubernetes is used as the execution platform for pipelines. For each incoming sample, cherami creates a Kubernetes Job that wraps the appropriate Nextflow pipeline, submits it to the cluster, and monitors its status until completion.
+
+### For developers
 
 For development notes please refer to [dev.md](docs/dev.md)

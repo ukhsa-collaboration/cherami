@@ -57,7 +57,10 @@ class Pipeline(ABC):
             logger.warning("Configured output_dir '%s' does not exist", self.config.output_dir)
 
         if not self.config.nf_config_path.exists():
-            logger.warning("Configured nf_config_path '%s' does not exist", self.config.nf_config_path)
+            logger.warning(
+                "Configured nf_config_path '%s' does not exist",
+                self.config.nf_config_path,
+            )
 
     def validate(self) -> None:
         """Run validation on the pipeline configuration."""
@@ -129,7 +132,7 @@ class Pipeline(ABC):
 
         return True
 
-    def create_job_manifest(self, samplesheet_path: Path | None, job_id: str, climb_id: str | None) -> dict[str, Any]:
+    def create_job_manifest(self, samplesheet_path: Path | None, job_id: str, climb_id: str) -> dict[str, Any]:
         """Creates the Kubernetes Job manifest for a pipeline run.
 
         This method constructs a complete Kubernetes Job spec using the pipeline config. The manifest
@@ -139,15 +142,16 @@ class Pipeline(ABC):
 
         Arguments:
             samplesheet_path: Optional path to a samplesheet to pass to Nextflow via --samplesheet.
-            job_id: Unique identifier used for job name and per-job output/work directories.
+            job_id: UUID associated with the sample.
+            climb_id: Climb id for a sample.
 
         Returns:
             Kubernetes Job manifest dictionary to submit via `create_namespaced_job`.
         """
         job_name = f"{self.config.name}-{job_id}"
 
-        job_output_dir = self.config.output_dir / job_id
-        nxf_work_dir = self.config.work_dir / job_id
+        job_output_dir = self.config.output_dir / climb_id
+        nxf_work_dir = self.config.work_dir / climb_id
         nxf_home_dir = self.config.work_dir / ".nextflow"
 
         pod_env_vars = [
@@ -155,9 +159,18 @@ class Pipeline(ABC):
             {"name": "NXF_HOME", "value": str(nxf_home_dir)},
             {"name": "ONYX_TOKEN", "value": str(os.environ.get("ONYX_TOKEN"))},
             {"name": "ONYX_DOMAIN", "value": str(os.environ.get("ONYX_DOMAIN"))},
-            {"name": "AWS_SECRET_ACCESS_KEY", "value": str(os.environ.get("AWS_SECRET_ACCESS_KEY"))},
-            {"name": "AWS_ACCESS_KEY_ID", "value": str(os.environ.get("AWS_ACCESS_KEY_ID"))},
-            {"name": "AWS_ENDPOINT_URL", "value": str(os.environ.get("AWS_ENDPOINT_URL"))},
+            {
+                "name": "AWS_SECRET_ACCESS_KEY",
+                "value": str(os.environ.get("AWS_SECRET_ACCESS_KEY")),
+            },
+            {
+                "name": "AWS_ACCESS_KEY_ID",
+                "value": str(os.environ.get("AWS_ACCESS_KEY_ID")),
+            },
+            {
+                "name": "AWS_ENDPOINT_URL",
+                "value": str(os.environ.get("AWS_ENDPOINT_URL")),
+            },
             {
                 "name": "AWS_REQUEST_CHECKSUM_CALCULATION",
                 "value": str(os.environ.get("AWS_REQUEST_CHECKSUM_CALCULATION")),

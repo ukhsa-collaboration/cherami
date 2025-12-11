@@ -75,7 +75,11 @@ def _launch_workers(
         while True:
             for process in processes:
                 if not process.is_alive():
-                    logger.error("worker process %s exited unexpectedly, exit code %s", process.name, process.exitcode)
+                    logger.error(
+                        "worker process %s exited unexpectedly, exit code %s",
+                        process.name,
+                        process.exitcode,
+                    )
                     raise RuntimeError(f"worker process {process.name} exited unexpectedly")
     except KeyboardInterrupt:
         logger.info("stopping workers...")
@@ -87,7 +91,10 @@ def _launch_workers(
 
 @click.command()
 @click.argument(
-    "worker_names", nargs=-1, metavar="WORKER_NAMES", type=click.Choice(list(WORKERS.keys()), case_sensitive=False)
+    "worker_names",
+    nargs=-1,
+    metavar="WORKER_NAMES",
+    type=click.Choice(list(WORKERS.keys()), case_sensitive=False),
 )
 @click.pass_context
 def spawn(click_context: click.Context, worker_names: tuple[str, ...]) -> None:
@@ -115,7 +122,10 @@ def spawn(click_context: click.Context, worker_names: tuple[str, ...]) -> None:
 
 @click.command()
 @click.argument(
-    "worker_names", nargs=-1, metavar="WORKER_NAMES", type=click.Choice(list(WORKERS.keys()), case_sensitive=False)
+    "worker_names",
+    nargs=-1,
+    metavar="WORKER_NAMES",
+    type=click.Choice(list(WORKERS.keys()), case_sensitive=False),
 )
 @click.pass_context
 def describe(click_context: click.Context, worker_names: tuple[str, ...]) -> None:
@@ -204,7 +214,12 @@ def run(
                     if result.success:
                         logger.info("%s completed %s successfully", sample_id, pipeline_name)
                     else:
-                        logger.error("%s failed %s: %s", sample_id, pipeline_name, ", ".join(result.errors))
+                        logger.error(
+                            "%s failed %s: %s",
+                            sample_id,
+                            pipeline_name,
+                            ", ".join(result.errors),
+                        )
                 except Exception as e:
                     logger.error("Exception running %s for %s: %s", pipeline_name, sample_id, e)
 
