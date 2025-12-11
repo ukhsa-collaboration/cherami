@@ -39,7 +39,7 @@ Global options:
 --sample-log <PATH> - File path for per-pipeline results (default ./sample_log.jsonl)
 --log <PATH> - log file path; logs to stderr when omitted
 --log-level <DEBUG|INFO|WARNING|ERROR> - default INFO
---config <PATH> - path to cherami JSON config (or set CHERAMI_CONFIG)
+--config <PATH> - path to cherami config (or set CHERAMI_CONFIG)
 ```
 ## Sub-commands
 
