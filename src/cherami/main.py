@@ -34,7 +34,13 @@ from cherami.config import load_config_file
     default="INFO",
 )
 @click.pass_context
-def cli(click_context: click.Context, config_path: Path, sample_log: Path, log: Path | None, log_level: str) -> None:
+def cli(
+    click_context: click.Context,
+    config_path: Path,
+    sample_log: Path,
+    log: Path | None,
+    log_level: str,
+) -> None:
     """Cherami command group."""
     click_context.ensure_object(dict)
     click_context.obj["config"] = load_config_file(config_path)

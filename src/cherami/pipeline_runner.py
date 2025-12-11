@@ -163,7 +163,11 @@ class PipelineRunner:
                     else:
                         raise
             else:
-                logger.info("Attaching to existing job %s for pipeline %s", job_name, pipeline.config.name)
+                logger.info(
+                    "Attaching to existing job %s for pipeline %s",
+                    job_name,
+                    pipeline.config.name,
+                )
 
             reported_failed_pods = 0
 
