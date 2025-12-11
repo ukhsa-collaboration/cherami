@@ -177,7 +177,7 @@ class PipelineRunner:
                 if status and status.succeeded:
                     logger.info("k8 job %s completed", job_name)
 
-                    trace_file = pipeline.config.output_dir / job_uuid / "pipeline_trace.txt"
+                    trace_file = pipeline.config.output_dir / sample_id / "pipeline_trace.txt"
 
                     if not trace_file.exists():
                         error_msg = f"trace_file_missing: {trace_file}"

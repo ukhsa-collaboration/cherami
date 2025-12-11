@@ -37,7 +37,7 @@ The config should have 2 sections, for pipelines and workers.
 | `nf_config_path` | Optional | Path to any extra Nextflow config file (e.g containing k8 executor profiles). |
 | `nf_profiles` | Optional | List of profiles passed to the nextflow command (e.g `-profile profile1,profile2`). |
 | `nf_extra_args` | Optional | Any additional arguments appended to the Nextflow command. |
-| `work_dir` | Yes | Directories that will be set for both `NXF_WORK` and `NXF_HOME` within the pod. |
+| `work_dir` | Yes | Root directory where Cherami creates `<work_dir>/<climb_id>` for `NXF_WORK` (and `<work_dir>/.nextflow` for `NXF_HOME`). |
 | `output_dir` | Yes | Directory where pipeline outputs and the trace file are written. |
 | `namespace` | Yes | Kubernetes namespace for the `Job`. |
 | `container` | Yes | Container used to run Nextflow. |

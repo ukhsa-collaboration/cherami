@@ -13,11 +13,11 @@ class OrangeBoxPipeline(Pipeline):
         # TODO
         return
 
-    def create_job_manifest(self, samplesheet_path: Path | None, job_id: str, climb_id: str | None) -> dict[str, Any]:
+    def create_job_manifest(self, samplesheet_path: Path | None, job_id: str, climb_id: str) -> dict[str, Any]:
         job_name = f"{self.config.name}-{job_id}"
 
-        job_output_dir = self.config.output_dir / job_id
-        nxf_work_dir = self.config.work_dir / job_id
+        job_output_dir = self.config.output_dir / climb_id
+        nxf_work_dir = self.config.work_dir / climb_id
         nxf_home_dir = self.config.work_dir / ".nextflow"
 
         pod_env_vars = [
@@ -25,9 +25,18 @@ class OrangeBoxPipeline(Pipeline):
             {"name": "NXF_HOME", "value": str(nxf_home_dir)},
             {"name": "ONYX_TOKEN", "value": str(os.environ.get("ONYX_TOKEN"))},
             {"name": "ONYX_DOMAIN", "value": str(os.environ.get("ONYX_DOMAIN"))},
-            {"name": "AWS_SECRET_ACCESS_KEY", "value": str(os.environ.get("AWS_SECRET_ACCESS_KEY"))},
-            {"name": "AWS_ACCESS_KEY_ID", "value": str(os.environ.get("AWS_ACCESS_KEY_ID"))},
-            {"name": "AWS_ENDPOINT_URL", "value": str(os.environ.get("AWS_ENDPOINT_URL"))},
+            {
+                "name": "AWS_SECRET_ACCESS_KEY",
+                "value": str(os.environ.get("AWS_SECRET_ACCESS_KEY")),
+            },
+            {
+                "name": "AWS_ACCESS_KEY_ID",
+                "value": str(os.environ.get("AWS_ACCESS_KEY_ID")),
+            },
+            {
+                "name": "AWS_ENDPOINT_URL",
+                "value": str(os.environ.get("AWS_ENDPOINT_URL")),
+            },
             {
                 "name": "AWS_REQUEST_CHECKSUM_CALCULATION",
                 "value": str(os.environ.get("AWS_REQUEST_CHECKSUM_CALCULATION")),

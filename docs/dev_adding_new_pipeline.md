@@ -66,8 +66,8 @@ Expected fields are as follows:
 | `nf_config_path` | Path to any extra Nextflow config file (e.g containing k8 executor profiles). |
 | `nf_profiles` | List of profiles passed to the nextflow command (e.g `-profile profile1,profile2`). |
 | `nf_extra_args` | Any additional arguments appended to the Nextflow command. |
-| `work_dir` | Directories that will be set for both `NXF_WORK` and `NXF_HOME` within the pod. |
-| `output_dir` | Directory where pipeline outputs and the trace file are written. |
+| `work_dir` | Root directory where Cherami creates `<work_dir>/<climb_id>` for `NXF_WORK` (and `<work_dir>/.nextflow` for `NXF_HOME`). |
+| `output_dir` | Directory where pipeline outputs and the trace file are written (Cherami writes into `<output_dir>/<climb_id>`). |
 | `namespace` | Kubernetes namespace for the `Job`. |
 | `container` | Container used to run Nextflow. |
 | `backoff_limit` | Maximum failed pod restarts before the job is considered failed. |
@@ -103,7 +103,7 @@ class MyPipeline(Pipeline):
 IMPORTANT:
 
 - `samples` currently should only ever be a list of one sample ID (`[sample_id]`), but accepts a list for future batching.
-- `job_id` is the UUID for this run obtained via the message payload and is used to name per-job files.
+- `job_id` is the UUID for this run obtained via the message payload and is used to name the Kubernetes job and generated samplesheets (work and output directories always use `climb_id`).
 - The samplesheet format is pipeline-specific. It must match what your Nextflow pipeline expects.
 - If your pipeline needs metadata from Onyx, follow the example used by `AmrPipeline` in `src/cherami/pipelines/amr.py`.
   - However, cherami does not require Onyx. Any method of constructing a valid samplesheet is acceptable as long as `generate_samplesheet` returns the correct path.
