@@ -11,13 +11,17 @@ logger = logging.getLogger(__name__)
 
 
 class AmrPipeline(Pipeline):
-    def generate_samplesheet(self, samples: list[str], job_id: str, output_filepath: Path) -> None:
+    def generate_samplesheet(
+        self, samples: list[str], job_id: str, output_filepath: Path
+    ) -> None:
         config = init_onyx()
         rows = []
         with OnyxClient(config) as client:
             for climb_id in samples:
                 try:
-                    climb_records = list(client.filter(project="synthscape", climb_id=climb_id))
+                    climb_records = list(
+                        client.filter(project="synthscape", climb_id=climb_id)
+                    )
                     record = climb_records[0]
                     read1_fastq = record["human_filtered_reads_1"]
                     read_2_fastq = record["human_filtered_reads_2"]
@@ -30,7 +34,9 @@ class AmrPipeline(Pipeline):
                     }
                     rows.append(row)
                 except (KeyError, IndexError):
-                    logger.warning("Sample %s not found in database. Skipping.", climb_id)
+                    logger.warning(
+                        "Sample %s not found in database. Skipping.", climb_id
+                    )
 
         if not rows:
             raise ValueError("Samplesheet generation produced no records")

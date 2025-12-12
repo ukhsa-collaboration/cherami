@@ -30,7 +30,9 @@ from cherami.config import load_raw_config_file
 @click.option(
     "--log-level",
     help="Logging level",
-    type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
+    type=click.Choice(
+        ["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False
+    ),
     default="INFO",
 )
 @click.pass_context

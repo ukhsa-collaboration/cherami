@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class Pipeline(ABC):
-    """Abstract base class for pipelines. All pipelines must inherit from this.
+    """Abstract base class for pipelines.
 
-    Subclasses accept a `PipelineConfig` and provide a `generate_samplesheet`
-    implementation that prepares their inputs.
+    All pipelines must inherit from this. Subclasses accept a `PipelineConfig` and
+    provide a `generate_samplesheet` implementation that prepares their inputs.
     """
 
     def __init__(self, config: PipelineConfig) -> None:
@@ -31,7 +31,9 @@ class Pipeline(ABC):
         return {}
 
     @abstractmethod
-    def generate_samplesheet(self, samples: list[str], job_id: str, output_filepath: Path) -> None:
+    def generate_samplesheet(
+        self, samples: list[str], job_id: str, output_filepath: Path
+    ) -> None:
         """Creates a samplesheet for the provided sample IDs.
 
         Implementations should create a samplesheet file for all samples being input into the pipeline.
@@ -56,7 +58,8 @@ class Pipeline(ABC):
 
     ## inspired by https://github.com/CLIMB-TRE/roz/blob/bd0ec88b29f9fd0fc18ca1cc500ad385128c121a/roz_scripts/mscape/mscape_ingest_validation.py#L997
     def evaluate_exit_status(self, trace_file: Path) -> bool:
-        """Ensures processes recorded in a Nextflow trace file all exited with allowed codes.
+        """Ensures processes recorded in a Nextflow trace file all exited with allowed
+        codes.
 
         This uses the `proc_names` property to determine which processes to check and their
         allowed exit codes. If `proc_names` is empty, all processes must have exited with
@@ -117,7 +120,6 @@ class Pipeline(ABC):
         Returns:
             `True` when the pipeline should run, otherwise `False`.
         """
-
         return True
 
     def create_job_manifest(
@@ -148,7 +150,10 @@ class Pipeline(ABC):
             {"name": "NXF_HOME", "value": str(job_dirs["nxf_home_dir"])},
             {"name": "NXF_LOG_FILE", "value": str(job_dirs["nxf_log_file"])},
             {"name": "ONYX_TOKEN", "value": str(os.environ.get("ONYX_TOKEN"))},
-            {"name": "ONYX_DOMAIN", "value": str(os.environ.get("ONYX_DOMAIN"))},
+            {
+                "name": "ONYX_DOMAIN",
+                "value": str(os.environ.get("ONYX_DOMAIN")),
+            },
             {
                 "name": "AWS_SECRET_ACCESS_KEY",
                 "value": str(os.environ.get("AWS_SECRET_ACCESS_KEY")),
@@ -163,7 +168,9 @@ class Pipeline(ABC):
             },
             {
                 "name": "AWS_REQUEST_CHECKSUM_CALCULATION",
-                "value": str(os.environ.get("AWS_REQUEST_CHECKSUM_CALCULATION")),
+                "value": str(
+                    os.environ.get("AWS_REQUEST_CHECKSUM_CALCULATION")
+                ),
             },
         ]
 
@@ -173,12 +180,16 @@ class Pipeline(ABC):
         if self.config.nf_config_path:
             nextflow_cmd.extend(["-c", str(self.config.nf_config_path)])
         if self.config.nf_profiles:
-            nextflow_cmd.extend(["-profile", ",".join(self.config.nf_profiles)])
+            nextflow_cmd.extend(
+                ["-profile", ",".join(self.config.nf_profiles)]
+            )
         if self.config.nf_extra_args:
             nextflow_cmd.extend(self.config.nf_extra_args)
         nextflow_cmd.extend(["--outdir", str(job_dirs["output_dir"])])
         if job_dirs.get("samplesheet_path"):
-            nextflow_cmd.extend(["--samplesheet", str(job_dirs["samplesheet_path"])])
+            nextflow_cmd.extend(
+                ["--samplesheet", str(job_dirs["samplesheet_path"])]
+            )
 
         command = " ".join(nextflow_cmd)
         logger.debug("Nextflow command: %s", command)
@@ -207,14 +218,20 @@ class Pipeline(ABC):
                         "volumes": [
                             {
                                 "name": "shared-public",
-                                "persistentVolumeClaim": {"claimName": "cephfs-shared-ro-public"},
+                                "persistentVolumeClaim": {
+                                    "claimName": "cephfs-shared-ro-public"
+                                },
                             },
                             {
                                 "name": "shared-team",
-                                "persistentVolumeClaim": {"claimName": "cephfs-shared-team"},
+                                "persistentVolumeClaim": {
+                                    "claimName": "cephfs-shared-team"
+                                },
                             },
                         ],
-                        "nodeSelector": {"hub.jupyter.org/node-purpose": "user-compute"},
+                        "nodeSelector": {
+                            "hub.jupyter.org/node-purpose": "user-compute"
+                        },
                         "containers": [
                             {
                                 "name": job_name,

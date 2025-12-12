@@ -14,7 +14,9 @@ from onyx import OnyxConfig, OnyxEnv
 from varys import Varys
 
 
-def logging_process(log_queue: Queue, log_path: Path | None, log_level: str) -> None:
+def logging_process(
+    log_queue: Queue, log_path: Path | None, log_level: str
+) -> None:
     """Entry point for the logging process.
 
     This process handles all log messages from worker processes via a multiprocessing.Queue.
@@ -61,8 +63,10 @@ def setup_queue_logging(log_queue: Queue, log_level: str) -> None:
     logger.addHandler(queue_handler)
 
 
-def init_logging(log_path: Path | None, log_level: str) -> tuple[Queue, SpawnProcess]:
-    """Initalise logging
+def init_logging(
+    log_path: Path | None, log_level: str
+) -> tuple[Queue, SpawnProcess]:
+    """Initalise logging.
 
     Creates a multiprocessing queue and a logging process, then configures
     the current process to use queue-based logging. This should only be called once
@@ -117,7 +121,9 @@ def init_kubernetes() -> BatchV1Api:
     """
     try:
         c = Configuration()
-        with Path("/run/secrets/kubernetes.io/serviceaccount/token").open("rt") as f:
+        with Path("/run/secrets/kubernetes.io/serviceaccount/token").open(
+            "rt"
+        ) as f:
             token = f.read()
         c.api_key["authorization"] = token
         c.api_key_prefix["authorization"] = "Bearer"
@@ -128,7 +134,9 @@ def init_kubernetes() -> BatchV1Api:
         api_instance = BatchV1Api()
         return api_instance
     except Exception as e:
-        raise RuntimeError(f"Failed to initialise Kubernetes client: {e}") from e
+        raise RuntimeError(
+            f"Failed to initialise Kubernetes client: {e}"
+        ) from e
 
 
 def init_onyx() -> OnyxConfig:

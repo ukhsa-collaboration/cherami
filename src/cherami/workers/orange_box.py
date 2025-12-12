@@ -13,4 +13,9 @@ class OrangeBoxWorker(Worker):
         work_dir: Path,
         output_dir: Path,
     ) -> None:
-        super().__init__(worker_config=worker_config, pipeline=pipeline, work_dir=work_dir, output_dir=output_dir)
+        super().__init__(
+            worker_config=worker_config,
+            pipeline=pipeline,
+            work_dir=work_dir,
+            output_dir=output_dir,
+        )

@@ -12,7 +12,8 @@ from cherami.utils import init_kubernetes, init_varys
 
 
 class Worker:
-    """Defines a base template for all workers, consuming a RabbitMQ queue and launching pipelines.
+    """Defines a base template for all workers, consuming a RabbitMQ queue and launching
+    pipelines.
 
     The base class implements orchestration methods common to every worker. It
     binds to the configured exchange, loads an associated Pipelines config, and executes
@@ -33,7 +34,13 @@ class Worker:
         publish_exchange: Optional exchange for completion messages.
     """
 
-    def __init__(self, worker_config: WorkerConfig, pipeline: Pipeline, work_dir: Path, output_dir: Path) -> None:
+    def __init__(
+        self,
+        worker_config: WorkerConfig,
+        pipeline: Pipeline,
+        work_dir: Path,
+        output_dir: Path,
+    ) -> None:
         self.config = worker_config
         self.pipeline = pipeline
         self.worker_name: str = worker_config.worker_name
@@ -41,24 +48,29 @@ class Worker:
         self.listen_queue_suffix: str = worker_config.listen_queue_suffix
         self.varys_config_path: Path = worker_config.varys_config_path
         self.varys_log_path: Path = worker_config.varys_log_path
-        self.publish_queue_suffix: str | None = worker_config.publish_queue_suffix
+        self.publish_queue_suffix: str | None = (
+            worker_config.publish_queue_suffix
+        )
         self.publish_exchange: str | None = worker_config.publish_exchange
         self._varys_client: Any
         self._runner: PipelineRunner
-        self.logger = logging.getLogger(f"cherami.workers.{worker_config.worker_name}")
+        self.logger = logging.getLogger(
+            f"cherami.workers.{worker_config.worker_name}"
+        )
         self._retry_counts: dict[str, int] = {}
         self.work_dir = work_dir
         self.output_dir = output_dir
 
     def on_skip(self, message: Any) -> None:
-        """Called when a message is to be skipped. By default will acknowledge the provided message.
+        """Called when a message is to be skipped.
 
-        Called when `pipeline.should_run(sample_id)` returns `False`, indicating the sample should not be processed.
-        The default implementation acknowledges the message and moves on. Override this if you need custom behavior
-        when skipping samples, such as logging to a separate queue etc etc
+        By default will acknowledge the provided message.
+                Called when `pipeline.should_run(sample_id)` returns `False`, indicating the sample should not be processed.
+                The default implementation acknowledges the message and moves on. Override this if you need custom behavior
+                when skipping samples, such as logging to a separate queue etc etc
 
-        Args:
-            message: Varys message representing a sample that should NOT launch a pipeline.
+                Args:
+                    message: Varys message representing a sample that should NOT launch a pipeline.
         """
         self._varys_client.acknowledge_message(message)
 
@@ -137,7 +149,9 @@ class Worker:
             sample_log: Path to sample log.
             shutdown_event: Shutdown event
         """
-        self._varys_client = init_varys(self.varys_config_path, self.varys_log_path)
+        self._varys_client = init_varys(
+            self.varys_config_path, self.varys_log_path
+        )
         self._runner = PipelineRunner(
             k8_api=init_kubernetes(),
             sample_log=sample_log,
@@ -223,7 +237,9 @@ class Worker:
                                 pipeline.config.name,
                                 climb_id,
                             )
-                            self.logger.error("Catastrophic error for sample %s", climb_id)
+                            self.logger.error(
+                                "Catastrophic error for sample %s", climb_id
+                            )
                             self._retry_counts.pop(climb_id, None)
                             self.on_sample_failure(message)
                         else:
@@ -238,10 +254,15 @@ class Worker:
                                 )
                                 self.on_retry(message)
                             else:
-                                self.logger.error("Catastrophic error for sample %s", climb_id)
+                                self.logger.error(
+                                    "Catastrophic error for sample %s",
+                                    climb_id,
+                                )
                                 self.on_sample_failure(message)
                 except Exception as e:
-                    self.logger.exception("Unhandled exception in worker: %s", str(e))
+                    self.logger.exception(
+                        "Unhandled exception in worker: %s", str(e)
+                    )
                     self.on_sample_failure(message)
                     ## TODO: we might consider retrying here if we got a valid message and payload
                     ## possibly an exception might be rasied from something transient like k8s failure

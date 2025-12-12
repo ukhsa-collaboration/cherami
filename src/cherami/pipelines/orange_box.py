@@ -9,7 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 class OrangeBoxPipeline(Pipeline):
-    def generate_samplesheet(self, samples: list[str], job_id: str, output_filepath: Path) -> None:
+    def generate_samplesheet(
+        self, samples: list[str], job_id: str, output_filepath: Path
+    ) -> None:
         # TODO
         return
 
@@ -26,7 +28,10 @@ class OrangeBoxPipeline(Pipeline):
             {"name": "NXF_HOME", "value": str(job_dirs["nxf_home_dir"])},
             {"name": "NXF_LOG_FILE", "value": str(job_dirs["nxf_log_file"])},
             {"name": "ONYX_TOKEN", "value": str(os.environ.get("ONYX_TOKEN"))},
-            {"name": "ONYX_DOMAIN", "value": str(os.environ.get("ONYX_DOMAIN"))},
+            {
+                "name": "ONYX_DOMAIN",
+                "value": str(os.environ.get("ONYX_DOMAIN")),
+            },
             {
                 "name": "AWS_SECRET_ACCESS_KEY",
                 "value": str(os.environ.get("AWS_SECRET_ACCESS_KEY")),
@@ -41,7 +46,9 @@ class OrangeBoxPipeline(Pipeline):
             },
             {
                 "name": "AWS_REQUEST_CHECKSUM_CALCULATION",
-                "value": str(os.environ.get("AWS_REQUEST_CHECKSUM_CALCULATION")),
+                "value": str(
+                    os.environ.get("AWS_REQUEST_CHECKSUM_CALCULATION")
+                ),
             },
         ]
 
@@ -51,7 +58,9 @@ class OrangeBoxPipeline(Pipeline):
         if self.config.nf_config_path:
             nextflow_cmd.extend(["-c", str(self.config.nf_config_path)])
         if self.config.nf_profiles:
-            nextflow_cmd.extend(["-profile", ",".join(self.config.nf_profiles)])
+            nextflow_cmd.extend(
+                ["-profile", ",".join(self.config.nf_profiles)]
+            )
         if self.config.nf_extra_args:
             nextflow_cmd.extend(self.config.nf_extra_args)
         nextflow_cmd.extend(["--outdir", str(job_dirs["output_dir"])])
@@ -89,14 +98,20 @@ class OrangeBoxPipeline(Pipeline):
                         "volumes": [
                             {
                                 "name": "shared-public",
-                                "persistentVolumeClaim": {"claimName": "cephfs-shared-ro-public"},
+                                "persistentVolumeClaim": {
+                                    "claimName": "cephfs-shared-ro-public"
+                                },
                             },
                             {
                                 "name": "shared-team",
-                                "persistentVolumeClaim": {"claimName": "cephfs-shared-team"},
+                                "persistentVolumeClaim": {
+                                    "claimName": "cephfs-shared-team"
+                                },
                             },
                         ],
-                        "nodeSelector": {"hub.jupyter.org/node-purpose": "user-compute"},
+                        "nodeSelector": {
+                            "hub.jupyter.org/node-purpose": "user-compute"
+                        },
                         "containers": [
                             {
                                 "name": job_name,

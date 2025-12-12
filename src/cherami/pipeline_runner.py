@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 class PipelineResult:
     """Outcome result for a single pipeline execution.
 
-    Instances are written to the JSONL sample log and used by workers to
-    decide whether retries are required via pipelines setting the `retry` flag.
+    Instances are written to the JSONL sample log and used by workers to decide whether
+    retries are required via pipelines setting the `retry` flag.
     """
 
     sample_id: str
@@ -32,7 +32,7 @@ class PipelineResult:
     retry: bool = False
 
     def to_json(self) -> dict[str, Any]:
-        """Return a subset of fields in JSON format"""
+        """Return a subset of fields in JSON format."""
         return {
             "sample_id": self.sample_id,
             "pipeline": self.pipeline_name,
@@ -47,10 +47,10 @@ class PipelineResult:
 class PipelineRunner:
     """Run Nextflow pipelines by executing Kubernetes Jobs.
 
-    Workers delegate pipeline execution to this class. It takes a
-    `BasePipeline` configuration and uses it to create a Kubernetes Job,
-    and waits until the run completes. Ultimately returns a `PipelineResult` which is
-    used by the worker to handle success, retry, or failure states.
+    Workers use this class for pipeline execution. It takes a `BasePipeline`
+    configuration and uses it to create a Kubernetes Job, and waits until the run
+    completes. Ultimately returns a `PipelineResult` which is used by the worker to
+    handle success, retry, or failure states.
     """
 
     def __init__(
@@ -148,7 +148,9 @@ class PipelineRunner:
         """
         job_name = f"{pipeline.config.name}-{job_uuid}"
         errors = []
-        job_dirs = self._create_dirs(sample_id, worker_work_dir, worker_output_dir)
+        job_dirs = self._create_dirs(
+            sample_id, worker_work_dir, worker_output_dir
+        )
 
         try:
             ## to handle situations where a worker crashes with jobs pending, here poll for an existing job with same
@@ -179,7 +181,11 @@ class PipelineRunner:
                     job_dirs=job_dirs,
                 )
 
-                logger.info("Creating job %s for pipeline %s", job_name, pipeline.config.name)
+                logger.info(
+                    "Creating job %s for pipeline %s",
+                    job_name,
+                    pipeline.config.name,
+                )
                 try:
                     self.k8_api.create_namespaced_job(
                         body=job_manifest,
@@ -189,7 +195,10 @@ class PipelineRunner:
                     ## if somehow the first check missed an existing job capture the 409 error here and let it continue
                     ## to the validation loop, otherwise raise any other exceptions
                     if e.status == 409:
-                        logger.warning("Job %s already exists; attaching to existing run", job_name)
+                        logger.warning(
+                            "Job %s already exists; attaching to existing run",
+                            job_name,
+                        )
                     else:
                         raise
             else:
@@ -252,7 +261,9 @@ class PipelineRunner:
                         reported_failed_pods = failed_count
 
                     if failed_count >= pipeline.config.backoff_limit:
-                        logger.error("k8 job %s exhausted backoff limit", job_name)
+                        logger.error(
+                            "k8 job %s exhausted backoff limit", job_name
+                        )
                         errors.append(
                             f"pod_failure: Job {job_name} exhausted backoff limit "
                             f"({pipeline.config.backoff_limit} attempts)"
@@ -260,9 +271,15 @@ class PipelineRunner:
                         self._cleanup_job(job_name=job_name, pipeline=pipeline)
                         return False, errors
 
-                if status.start_time and time.time() - status.start_time.timestamp() > pipeline.config.job_timeout:
+                if (
+                    status.start_time
+                    and time.time() - status.start_time.timestamp()
+                    > pipeline.config.job_timeout
+                ):
                     logger.error("k8 job %s timed out", job_name)
-                    errors.append(f"pod_failure: Job {job_name} timed out after {pipeline.config.job_timeout} seconds")
+                    errors.append(
+                        f"pod_failure: Job {job_name} timed out after {pipeline.config.job_timeout} seconds"
+                    )
                     self._cleanup_job(job_name=job_name, pipeline=pipeline)
                     return False, errors
 
@@ -281,7 +298,9 @@ class PipelineRunner:
 
         return False, errors
 
-    def _create_dirs(self, sample_id: str, worker_work_dir: Path, worker_output_dir: Path) -> dict[str, Path]:
+    def _create_dirs(
+        self, sample_id: str, worker_work_dir: Path, worker_output_dir: Path
+    ) -> dict[str, Path]:
         ## creates all the dirs to run a sample
         sample_work_dir = worker_work_dir / sample_id
         sample_output_dir = worker_output_dir / sample_id
@@ -347,7 +366,9 @@ class PipelineRunner:
                 raise
             if time.time() >= deadline:
                 ## TODO: if this happens strong chance that re-running will raise exception 409 - how to handle?
-                logger.warning("Timed out waiting for job %s to delete", job_name)
+                logger.warning(
+                    "Timed out waiting for job %s to delete", job_name
+                )
                 return
 
     def _log_result(self, result: PipelineResult) -> None:
@@ -361,4 +382,6 @@ class PipelineRunner:
                 file_handle.write(json.dumps(result.to_json()))
                 file_handle.write("\n")
         except Exception:
-            logger.error("Failed writing pipeline log for sample %s", result.sample_id)
+            logger.error(
+                "Failed writing pipeline log for sample %s", result.sample_id
+            )
