@@ -3,7 +3,7 @@ from pathlib import Path
 import click
 
 from cherami import subcommands
-from cherami.config import load_config_file
+from cherami.config import load_raw_config_file
 
 
 @click.group()
@@ -43,7 +43,7 @@ def cli(
 ) -> None:
     """Cherami command group."""
     click_context.ensure_object(dict)
-    click_context.obj["config"] = load_config_file(config_path)
+    click_context.obj["config"] = load_raw_config_file(config_path)
     click_context.obj["sample_log"] = sample_log
     click_context.obj["log"] = log
     click_context.obj["log_level"] = log_level

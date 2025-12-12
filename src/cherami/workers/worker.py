@@ -33,7 +33,7 @@ class Worker:
         publish_exchange: Optional exchange for completion messages.
     """
 
-    def __init__(self, worker_config: WorkerConfig, pipeline: Pipeline) -> None:
+    def __init__(self, worker_config: WorkerConfig, pipeline: Pipeline, work_dir: Path, output_dir: Path) -> None:
         self.config = worker_config
         self.pipeline = pipeline
         self.worker_name: str = worker_config.worker_name
@@ -47,6 +47,8 @@ class Worker:
         self._runner: PipelineRunner
         self.logger = logging.getLogger(f"cherami.workers.{worker_config.worker_name}")
         self._retry_counts: dict[str, int] = {}
+        self.work_dir = work_dir
+        self.output_dir = output_dir
 
     def on_skip(self, message: Any) -> None:
         """Called when a message is to be skipped. By default will acknowledge the provided message.
@@ -195,6 +197,8 @@ class Worker:
                         pipeline=pipeline,
                         sample_id=climb_id,
                         job_uuid=job_uuid,
+                        worker_work_dir=self.work_dir,
+                        worker_output_dir=self.output_dir,
                     )
 
                     if result.success:
