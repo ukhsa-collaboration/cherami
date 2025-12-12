@@ -7,7 +7,11 @@ from cherami.pipelines import Pipeline
 
 
 class DummyPipeline(Pipeline):
-    def __init__(self, config: PipelineConfig, proc_names: dict[str, list[int]] | None = None):
+    def __init__(
+        self,
+        config: PipelineConfig,
+        proc_names: dict[str, list[int]] | None = None,
+    ):
         super().__init__(config)
         self._proc_names = proc_names or {}
 
@@ -15,14 +19,12 @@ class DummyPipeline(Pipeline):
     def proc_names(self) -> dict[str, list[int]]:
         return self._proc_names
 
-    def generate_samplesheet(self, samples, job_id):
+    def generate_samplesheet(self, samples, job_id, destination):
         return
 
 
 @pytest.fixture
 def pipeline_config():
-    work_dir = Path("work")
-    output_dir = Path("outputs")
     return PipelineConfig(
         name="test",
         version="0.1.0",
@@ -34,8 +36,6 @@ def pipeline_config():
         nf_config_path=Path("/configs/dummy.config"),
         nf_profiles=["test"],
         nf_extra_args=[],
-        work_dir=work_dir,
-        output_dir=output_dir,
         namespace="cherami",
         container="idont:exist",
         backoff_limit=5,
@@ -92,7 +92,9 @@ def test_eval_exit_status_should_fail(pipeline, trace_file):
         "2\t82/cac9ed\tnf-82cac7edfcf0128514abf5f17718a8af-b277e\tNFCORE_DEMO:DEMO:FASTQC (SAMPLE1_PE)\tCOMPLETED\t5\t2025-09-24 12:17:37.439\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t19.5 MB\t4.6 MB\n3\t82/cac9ed\tnf-82cac7edfcf0128514abf5f17718a8af-b277e\tNFCORE_DEMO:DEMO:FASTQC (SAMPLE1_PE)\tCOMPLETED\t0\t2025-09-24 12:17:37.439\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t19.5 MB\t4.6 MB\n",
     ],
 )
-def test_eval_exit_status_proc_names_should_pass(pipeline_proc_names, trace_file):
+def test_eval_exit_status_proc_names_should_pass(
+    pipeline_proc_names, trace_file
+):
     assert pipeline_proc_names.evaluate_exit_status(trace_file) is True
 
 
@@ -102,5 +104,7 @@ def test_eval_exit_status_proc_names_should_pass(pipeline_proc_names, trace_file
         "4\t83/cacaed\tnf-83cac7edfcf0128514abf5f17718a8af-b277e\tNFCORE_DEMO:DEMO:FASTQC (SAMPLE1_PE)\tCOMPLETED\t1\t2025-09-24 12:17:37.439\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t19.5 MB\t4.6 MB\n",
     ],
 )
-def test_eval_exit_status_proc_names_should_fail(pipeline_proc_names, trace_file):
+def test_eval_exit_status_proc_names_should_fail(
+    pipeline_proc_names, trace_file
+):
     assert pipeline_proc_names.evaluate_exit_status(trace_file) is False
