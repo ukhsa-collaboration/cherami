@@ -9,20 +9,22 @@ logger = logging.getLogger(__name__)
 
 
 class OrangeBoxPipeline(Pipeline):
-    def generate_samplesheet(self, samples: list[str], job_id: str) -> Path | None:
+    def generate_samplesheet(self, samples: list[str], job_id: str, output_filepath: Path) -> None:
         # TODO
         return
 
-    def create_job_manifest(self, samplesheet_path: Path | None, job_id: str, climb_id: str) -> dict[str, Any]:
+    def create_job_manifest(
+        self,
+        job_id: str,
+        climb_id: str,
+        job_dirs: dict[str, Path],
+    ) -> dict[str, Any]:
         job_name = f"{self.config.name}-{job_id}"
 
-        job_output_dir = self.config.output_dir / climb_id
-        nxf_work_dir = self.config.work_dir / climb_id
-        nxf_home_dir = self.config.work_dir / ".nextflow"
-
         pod_env_vars = [
-            {"name": "NXF_WORK", "value": str(nxf_work_dir)},
-            {"name": "NXF_HOME", "value": str(nxf_home_dir)},
+            {"name": "NXF_WORK", "value": str(job_dirs["nxf_work_dir"])},
+            {"name": "NXF_HOME", "value": str(job_dirs["nxf_home_dir"])},
+            {"name": "NXF_LOG_FILE", "value": str(job_dirs["nxf_log_file"])},
             {"name": "ONYX_TOKEN", "value": str(os.environ.get("ONYX_TOKEN"))},
             {"name": "ONYX_DOMAIN", "value": str(os.environ.get("ONYX_DOMAIN"))},
             {
@@ -52,10 +54,11 @@ class OrangeBoxPipeline(Pipeline):
             nextflow_cmd.extend(["-profile", ",".join(self.config.nf_profiles)])
         if self.config.nf_extra_args:
             nextflow_cmd.extend(self.config.nf_extra_args)
-        if self.config.output_dir:
-            nextflow_cmd.extend(["--outdir", str(job_output_dir)])
-        if samplesheet_path:
-            nextflow_cmd.extend(["--samplesheet", str(samplesheet_path)])
+        nextflow_cmd.extend(["--outdir", str(job_dirs["output_dir"])])
+        if job_dirs.get("samplesheet_path"):
+            nextflow_cmd.extend(
+                ["--samplesheet", str(job_dirs["samplesheet_path"])],
+            )
         if climb_id:
             nextflow_cmd.extend(["--climbid", str(climb_id)])
 
@@ -119,7 +122,7 @@ class OrangeBoxPipeline(Pipeline):
                                         "name": "shared-team",
                                     },
                                 ],
-                                "workingDir": str(self.config.work_dir),
+                                "workingDir": str(job_dirs["working_dir"]),
                                 "env": pod_env_vars,
                                 "args": ["/bin/sh", "-c", command],
                             },

@@ -63,7 +63,15 @@ class PipelineRunner:
         self._sample_log = sample_log
         logger.info("Initialised pipeline runner")
 
-    def run_pipeline(self, *, pipeline: Pipeline, sample_id: str, job_uuid: str) -> PipelineResult:
+    def run_pipeline(
+        self,
+        *,
+        pipeline: Pipeline,
+        sample_id: str,
+        job_uuid: str,
+        worker_work_dir: Path,
+        worker_output_dir: Path,
+    ) -> PipelineResult:
         """Launch the given pipeline for a specific sample.
 
         Workers call this method once they have decided a sample should run.
@@ -76,6 +84,8 @@ class PipelineRunner:
             pipeline: Pipeline instance to run.
             sample_id: Sample identifier to run the pipeline for.
             job_uuid: Unique job UUID for this pipeline run.
+            worker_work_dir: Output directory for intermediate files.
+            worker_output_dir: Output directory for published outputs.
 
         Returns:
             `PipelineResult` instance for the run outcome.
@@ -83,7 +93,13 @@ class PipelineRunner:
         """
         pipeline.validate()
         started_at = datetime.now()
-        success, errors = self._execute_pipeline(pipeline, sample_id, job_uuid)
+        success, errors = self._execute_pipeline(
+            pipeline=pipeline,
+            sample_id=sample_id,
+            job_uuid=job_uuid,
+            worker_work_dir=worker_work_dir,
+            worker_output_dir=worker_output_dir,
+        )
         completed_at = datetime.now()
 
         result = PipelineResult(
@@ -103,7 +119,14 @@ class PipelineRunner:
         self._log_result(result)
         return result
 
-    def _execute_pipeline(self, pipeline: Pipeline, sample_id: str, job_uuid: str) -> tuple[bool, list[str]]:
+    def _execute_pipeline(
+        self,
+        pipeline: Pipeline,
+        sample_id: str,
+        job_uuid: str,
+        worker_work_dir: Path,
+        worker_output_dir: Path,
+    ) -> tuple[bool, list[str]]:
         """Submit the Kubernetes Job and return the result of execution.
 
         This method generates the samplesheet and job manifest from the pipeline configuration,
@@ -117,12 +140,15 @@ class PipelineRunner:
             pipeline: Pipeline instance to run.
             sample_id: Sample identifier to run the pipeline for.
             job_uuid: Unique job UUID for this pipeline run.
+            worker_work_dir: Output directory for intermediate files.
+            worker_output_dir: Output directory for published outputs.
 
         Returns:
             A tuple containing a boolean indicating success, and a list of error messages.
         """
         job_name = f"{pipeline.config.name}-{job_uuid}"
         errors = []
+        job_dirs = self._create_dirs(sample_id, worker_work_dir, worker_output_dir)
 
         try:
             ## to handle situations where a worker crashes with jobs pending, here poll for an existing job with same
@@ -138,15 +164,19 @@ class PipelineRunner:
 
             if not job_exists:
                 try:
-                    samplesheet_path = pipeline.generate_samplesheet([sample_id], job_uuid)
+                    pipeline.generate_samplesheet(
+                        [sample_id],
+                        job_uuid,
+                        job_dirs["samplesheet_path"],
+                    )
                 except Exception as e:
                     errors.append(f"samplesheet_generation_failed: {e}")
                     return False, errors
 
                 job_manifest = pipeline.create_job_manifest(
-                    samplesheet_path=samplesheet_path,
                     job_id=job_uuid,
                     climb_id=sample_id,
+                    job_dirs=job_dirs,
                 )
 
                 logger.info("Creating job %s for pipeline %s", job_name, pipeline.config.name)
@@ -181,7 +211,7 @@ class PipelineRunner:
                 if status and status.succeeded:
                     logger.info("k8 job %s completed", job_name)
 
-                    trace_file = pipeline.config.output_dir / sample_id / "pipeline_trace.txt"
+                    trace_file = job_dirs["output_dir"] / "pipeline_trace.txt"
 
                     if not trace_file.exists():
                         error_msg = f"trace_file_missing: {trace_file}"
@@ -250,6 +280,33 @@ class PipelineRunner:
             self._cleanup_job(job_name=job_name, pipeline=pipeline)
 
         return False, errors
+
+    def _create_dirs(self, sample_id: str, worker_work_dir: Path, worker_output_dir: Path) -> dict[str, Path]:
+        ## creates all the dirs to run a sample
+        sample_work_dir = worker_work_dir / sample_id
+        sample_output_dir = worker_output_dir / sample_id
+
+        nxf_work_dir = sample_work_dir / f"{sample_id}_nxf_work"
+        nxf_home_dir = worker_work_dir / ".nextflow"
+        nxf_log_file = sample_work_dir / f"{sample_id}.log"
+
+        samplesheet_path = sample_work_dir / f"{sample_id}_samplesheet.csv"
+
+        worker_work_dir.mkdir(parents=True, exist_ok=True)
+        worker_output_dir.mkdir(parents=True, exist_ok=True)
+        sample_work_dir.mkdir(parents=True, exist_ok=True)
+        nxf_work_dir.mkdir(parents=True, exist_ok=True)
+        nxf_home_dir.mkdir(parents=True, exist_ok=True)
+        sample_output_dir.mkdir(parents=True, exist_ok=True)
+
+        return {
+            "working_dir": sample_work_dir,
+            "output_dir": sample_output_dir,
+            "nxf_work_dir": nxf_work_dir,
+            "nxf_home_dir": nxf_home_dir,
+            "nxf_log_file": nxf_log_file,
+            "samplesheet_path": samplesheet_path,
+        }
 
     def _cleanup_job(self, *, job_name: str, pipeline: Pipeline) -> None:
         """Delete a Kubernetes Job and wait for deletion to complete.

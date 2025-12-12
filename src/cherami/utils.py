@@ -117,8 +117,8 @@ def init_kubernetes() -> BatchV1Api:
     """
     try:
         c = Configuration()
-        with Path("/run/secrets/kubernetes.io/serviceaccount/token").open("rt") as token_fh:
-            token = token_fh.read()
+        with Path("/run/secrets/kubernetes.io/serviceaccount/token").open("rt") as f:
+            token = f.read()
         c.api_key["authorization"] = token
         c.api_key_prefix["authorization"] = "Bearer"
         c.host = f"https://{os.getenv('KUBERNETES_SERVICE_HOST')}"

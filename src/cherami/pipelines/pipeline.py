@@ -31,31 +31,19 @@ class Pipeline(ABC):
         return {}
 
     @abstractmethod
-    def generate_samplesheet(self, samples: list[str], job_id: str) -> Path | None:
+    def generate_samplesheet(self, samples: list[str], job_id: str, output_filepath: Path) -> None:
         """Creates a samplesheet for the provided sample IDs.
 
         Implementations should create a samplesheet file for all samples being input into the pipeline.
-        Samplesheet format is pipeline-specific. The returned path will be passed to the pipeline's job to be
-        used as input.
 
         Arguments:
             samples: Sample identifiers the pipeline will process.
-            job_id: Identifier associated with the orchestrated job. Implementations can
-                use this to name any generated files.
-
-        Returns:
-            Path to the generated samplesheet, or `None` when no samplesheet
-            is required.
+            job_id: Identifier associated with the orchestrated job.
+            output_filepath: Location where the samplesheet should be written.
         """
 
     def _check_paths(self) -> None:
         """Log warnings whenever configured filesystem locations are missing."""
-        if not self.config.work_dir.exists():
-            logger.warning("Configured work_dir '%s' does not exist", self.config.work_dir)
-
-        if not self.config.output_dir.exists():
-            logger.warning("Configured output_dir '%s' does not exist", self.config.output_dir)
-
         if not self.config.nf_config_path.exists():
             logger.warning(
                 "Configured nf_config_path '%s' does not exist",
@@ -87,8 +75,8 @@ class Pipeline(ABC):
             return False
 
         try:
-            with trace_file.open("r") as trace_fh:
-                reader = csv.DictReader(trace_fh, delimiter="\t")
+            with trace_file.open("r") as f:
+                reader = csv.DictReader(f, delimiter="\t")
                 ## by default check all processes for exit code 0
                 if not self.proc_names:
                     for row in reader:
@@ -132,7 +120,12 @@ class Pipeline(ABC):
 
         return True
 
-    def create_job_manifest(self, samplesheet_path: Path | None, job_id: str, climb_id: str) -> dict[str, Any]:
+    def create_job_manifest(
+        self,
+        job_id: str,
+        climb_id: str,
+        job_dirs: dict[str, Path],
+    ) -> dict[str, Any]:
         """Creates the Kubernetes Job manifest for a pipeline run.
 
         This method constructs a complete Kubernetes Job spec using the pipeline config. The manifest
@@ -141,22 +134,19 @@ class Pipeline(ABC):
         will restart the pod up to backoff_limit times if it fails.
 
         Arguments:
-            samplesheet_path: Optional path to a samplesheet to pass to Nextflow via --samplesheet.
             job_id: UUID associated with the sample.
             climb_id: Climb id for a sample.
+            job_dirs: Dictionary of filesystem paths used by the job.
 
         Returns:
             Kubernetes Job manifest dictionary to submit via `create_namespaced_job`.
         """
         job_name = f"{self.config.name}-{job_id}"
 
-        job_output_dir = self.config.output_dir / climb_id
-        nxf_work_dir = self.config.work_dir / climb_id
-        nxf_home_dir = self.config.work_dir / ".nextflow"
-
         pod_env_vars = [
-            {"name": "NXF_WORK", "value": str(nxf_work_dir)},
-            {"name": "NXF_HOME", "value": str(nxf_home_dir)},
+            {"name": "NXF_WORK", "value": str(job_dirs["nxf_work_dir"])},
+            {"name": "NXF_HOME", "value": str(job_dirs["nxf_home_dir"])},
+            {"name": "NXF_LOG_FILE", "value": str(job_dirs["nxf_log_file"])},
             {"name": "ONYX_TOKEN", "value": str(os.environ.get("ONYX_TOKEN"))},
             {"name": "ONYX_DOMAIN", "value": str(os.environ.get("ONYX_DOMAIN"))},
             {
@@ -186,10 +176,9 @@ class Pipeline(ABC):
             nextflow_cmd.extend(["-profile", ",".join(self.config.nf_profiles)])
         if self.config.nf_extra_args:
             nextflow_cmd.extend(self.config.nf_extra_args)
-        if self.config.output_dir:
-            nextflow_cmd.extend(["--outdir", str(job_output_dir)])
-        if samplesheet_path:
-            nextflow_cmd.extend(["--samplesheet", str(samplesheet_path)])
+        nextflow_cmd.extend(["--outdir", str(job_dirs["output_dir"])])
+        if job_dirs.get("samplesheet_path"):
+            nextflow_cmd.extend(["--samplesheet", str(job_dirs["samplesheet_path"])])
 
         command = " ".join(nextflow_cmd)
         logger.debug("Nextflow command: %s", command)
@@ -251,7 +240,7 @@ class Pipeline(ABC):
                                         "name": "shared-team",
                                     },
                                 ],
-                                "workingDir": str(self.config.work_dir),
+                                "workingDir": str(job_dirs["working_dir"]),
                                 "env": pod_env_vars,
                                 "args": ["/bin/sh", "-c", command],
                             },

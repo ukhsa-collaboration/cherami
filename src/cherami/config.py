@@ -19,8 +19,6 @@ class PipelineConfig:
     nf_config_path: Path
     nf_profiles: list[str]
     nf_extra_args: list[str]
-    work_dir: Path
-    output_dir: Path
     ## k8 configs
     namespace: str
     container: str
@@ -43,8 +41,6 @@ class PipelineConfig:
                 nf_config_path=Path(raw_config["nf_config_path"]),
                 nf_profiles=list(raw_config["nf_profiles"]),
                 nf_extra_args=list(raw_config["nf_extra_args"]),
-                work_dir=Path(raw_config["work_dir"]),
-                output_dir=Path(raw_config["output_dir"]),
                 namespace=str(raw_config["namespace"]),
                 container=str(raw_config["container"]),
                 backoff_limit=int(raw_config["backoff_limit"]),
@@ -86,12 +82,28 @@ class WorkerConfig:
             raise ValueError(f"Worker '{name}' missing required field: {error.args[0]}") from error
 
 
-def load_config_file(config_path: Path) -> dict[str, Any]:
-    with config_path.open("r") as fh:
-        return json.load(fh)
+@dataclass(frozen=True)
+class GlobalConfig:
+    work_dir: Path
+    output_dir: Path
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> "GlobalConfig":
+        try:
+            return cls(
+                work_dir=Path(raw["work_dir"]),
+                output_dir=Path(raw["output_dir"]),
+            )
+        except KeyError as error:
+            raise ValueError(f"Global config missing required field: {error.args[0]}") from error
 
 
-def load_pipeline_config(name: str, raw_config: dict[str, Any]) -> PipelineConfig:
+def load_raw_config_file(config_path: Path) -> dict[str, Any]:
+    with config_path.open("r") as f:
+        return json.load(f)
+
+
+def parse_pipeline_config(name: str, raw_config: dict[str, Any]) -> PipelineConfig:
     pipelines = raw_config.get("pipelines") or {}
     if name not in pipelines:
         raise ValueError(f"Config missing pipeline '{name}'")
@@ -99,9 +111,16 @@ def load_pipeline_config(name: str, raw_config: dict[str, Any]) -> PipelineConfi
     return PipelineConfig.from_dict(name, raw_pipeline)
 
 
-def load_worker_config(name: str, raw_config: dict[str, Any]) -> WorkerConfig:
+def parse_worker_config(name: str, raw_config: dict[str, Any]) -> WorkerConfig:
     workers = raw_config.get("workers") or {}
     if name not in workers:
         raise ValueError(f"Config missing worker '{name}'")
     raw_worker = workers[name]
     return WorkerConfig.from_dict(name, raw_worker)
+
+
+def parse_global_config(raw_config: dict[str, Any]) -> GlobalConfig:
+    raw_global = raw_config.get("global")
+    if raw_global is None:
+        raise ValueError("Config missing 'global' section")
+    return GlobalConfig.from_dict(raw_global)
