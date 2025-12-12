@@ -11,10 +11,14 @@ Cherami loads all of the required runtime settings from a config file.
 
 ## 2. Config structure
 
-The config should have 2 sections, for pipelines and workers.
+The config should have 3 sections: a global block, and sections to configure workers and pipelines
 
 ```json
 {
+  "global": {
+    "work_dir": "",
+    "output_dir": ""
+  },
   "pipelines": {
     "my-pipeline": { }
   },
@@ -23,11 +27,21 @@ The config should have 2 sections, for pipelines and workers.
   }
 }
 ```
+IMPORTANT:
+- The `global` section defines shared `work_dir`and `output_dir` roots used by every pipeline 
+- Cherami will create `<work_dir>/<worker_name>/<climb_id>/` and `<output_dir>/<worker_name>/<climb_id>/` automatically for samples,
 - Pipeline keys (e.g. `"my-pipeline"`) must match the names registered in `src/cherami/pipelines/__init__.py`.
 - Worker keys (e.g. `"my-worker"`) must match the names in `src/cherami/workers/__init__.py`.
 - Names should NOT contain underscores (`_`) as these are NOT valid kuberentes job names.
 
-## 3. Pipeline fields
+## 3. Global fields
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `work_dir` | Yes | Directory used for all intermediate files. |
+| `output_dir` | Yes | Base directory for published outputs and trace files. |
+
+## 4. Pipeline fields
 
 | Field | Required | Description |
 | --- | --- | --- |
@@ -37,8 +51,6 @@ The config should have 2 sections, for pipelines and workers.
 | `nf_config_path` | Optional | Path to any extra Nextflow config file (e.g containing k8 executor profiles). |
 | `nf_profiles` | Optional | List of profiles passed to the nextflow command (e.g `-profile profile1,profile2`). |
 | `nf_extra_args` | Optional | Any additional arguments appended to the Nextflow command. |
-| `work_dir` | Yes | Root directory where Cherami creates `<work_dir>/<climb_id>` for `NXF_WORK` (and `<work_dir>/.nextflow` for `NXF_HOME`). |
-| `output_dir` | Yes | Directory where pipeline outputs and the trace file are written. |
 | `namespace` | Yes | Kubernetes namespace for the `Job`. |
 | `container` | Yes | Container used to run Nextflow. |
 | `backoff_limit` | Yes | Maximum failed pod restarts before the job is considered failed. |
@@ -47,7 +59,7 @@ The config should have 2 sections, for pipelines and workers.
 | `job_timeout` | Yes | Maximum run time in seconds before Cherami treats the job as timed out. |
 
 
-## 4. Worker fields
+## 5. Worker fields
 
 | Field | Required | Description |
 | --- | --- | --- |

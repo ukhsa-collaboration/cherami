@@ -41,10 +41,8 @@ IMPORTANT:
       "cpu_limit": 4,
       "mem_limit": "8G",
       "nf_config_path": "/path/to/nextflow.config",
-      "nf_config_path": ["docker"],
+      "nf_profiles": ["docker"],
       "nf_extra_args": [],
-      "work_dir": "/path/to/work_dir",
-      "output_dir": "/path/to/output_dir",
       "namespace": "k8s-namespace",
       "container": "quay.io/path/to/image",
       "backoff_limit": 5,
@@ -66,8 +64,6 @@ Expected fields are as follows:
 | `nf_config_path` | Path to any extra Nextflow config file (e.g containing k8 executor profiles). |
 | `nf_profiles` | List of profiles passed to the nextflow command (e.g `-profile profile1,profile2`). |
 | `nf_extra_args` | Any additional arguments appended to the Nextflow command. |
-| `work_dir` | Root directory where Cherami creates `<work_dir>/<climb_id>` for `NXF_WORK` (and `<work_dir>/.nextflow` for `NXF_HOME`). |
-| `output_dir` | Directory where pipeline outputs and the trace file are written (Cherami writes into `<output_dir>/<climb_id>`). |
 | `namespace` | Kubernetes namespace for the `Job`. |
 | `container` | Container used to run Nextflow. |
 | `backoff_limit` | Maximum failed pod restarts before the job is considered failed. |
@@ -93,10 +89,9 @@ from cherami.pipelines.pipeline import Pipeline
 
 
 class MyPipeline(Pipeline):
-    def generate_samplesheet(self, samples: list[str], job_id: str) -> Path | None:
+    def generate_samplesheet(self, samples: list[str], job_id: str, output_filepath: Path) -> None:
         ## Look up any metadata you need in onyx
-        ## Write a samplesheet file to a location accessable to the pipeline
-        ## Return the Path to the generated file
+        ## Write a samplesheet file to the provided filepath
         ...
 ```
 
