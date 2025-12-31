@@ -28,7 +28,9 @@ class PipelineConfig:
     job_timeout: int
 
     @classmethod
-    def from_dict(cls, name: str, raw_config: dict[str, Any]) -> "PipelineConfig":
+    def from_dict(
+        cls, name: str, raw_config: dict[str, Any]
+    ) -> "PipelineConfig":
         try:
             return cls(
                 name=name,
@@ -49,7 +51,9 @@ class PipelineConfig:
                 job_timeout=int(raw_config["job_timeout"]),
             )
         except KeyError as error:
-            raise ValueError(f"Pipeline '{name}' missing required field: {error.args[0]}") from error
+            raise ValueError(
+                f"Pipeline '{name}' missing required field: {error.args[0]}"
+            ) from error
 
 
 @dataclass(frozen=True)
@@ -74,12 +78,16 @@ class WorkerConfig:
                 publish_queue_suffix=str(raw["publish_queue_suffix"])
                 if raw["publish_queue_suffix"] is not None
                 else None,
-                publish_exchange=str(raw["publish_exchange"]) if raw["publish_exchange"] is not None else None,
+                publish_exchange=str(raw["publish_exchange"])
+                if raw["publish_exchange"] is not None
+                else None,
                 varys_config_path=Path(raw["varys_config_path"]),
                 varys_log_path=Path(raw["varys_log_path"]),
             )
         except KeyError as error:
-            raise ValueError(f"Worker '{name}' missing required field: {error.args[0]}") from error
+            raise ValueError(
+                f"Worker '{name}' missing required field: {error.args[0]}"
+            ) from error
 
 
 @dataclass(frozen=True)
@@ -95,7 +103,9 @@ class GlobalConfig:
                 output_dir=Path(raw["output_dir"]),
             )
         except KeyError as error:
-            raise ValueError(f"Global config missing required field: {error.args[0]}") from error
+            raise ValueError(
+                f"Global config missing required field: {error.args[0]}"
+            ) from error
 
 
 def load_raw_config_file(config_path: Path) -> dict[str, Any]:
@@ -103,7 +113,9 @@ def load_raw_config_file(config_path: Path) -> dict[str, Any]:
         return json.load(f)
 
 
-def parse_pipeline_config(name: str, raw_config: dict[str, Any]) -> PipelineConfig:
+def parse_pipeline_config(
+    name: str, raw_config: dict[str, Any]
+) -> PipelineConfig:
     pipelines = raw_config.get("pipelines") or {}
     if name not in pipelines:
         raise ValueError(f"Config missing pipeline '{name}'")

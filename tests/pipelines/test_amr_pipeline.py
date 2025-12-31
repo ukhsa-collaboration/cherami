@@ -1,7 +1,4 @@
 import csv
-import os
-import tempfile
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -11,9 +8,7 @@ from cherami.pipelines.amr import AmrPipeline
 
 @pytest.fixture
 def mock_config():
-    config = Mock()
-    config.work_dir = Path(tempfile.mkdtemp())
-    return config
+    return Mock()
 
 
 @pytest.fixture
@@ -31,22 +26,26 @@ def mock_onyx_record():
     }
 
 
-@patch.dict(os.environ, {"ONYX_DOMAIN": "test.domain", "ONYX_TOKEN": "test_token"})
-@patch("cherami.pipelines.amr.OnyxClient")
-def test_generate_samplesheet_success(mock_onyx_client, amr_pipeline, mock_onyx_record):
-    mock_client = Mock()
-    mock_client.filter.return_value = [mock_onyx_record]
-    mock_onyx_client.return_value.__enter__.return_value = mock_client
+def test_generate_samplesheet_success(
+    tmp_path, monkeypatch, amr_pipeline, mock_onyx_record
+):
+    monkeypatch.setenv("ONYX_DOMAIN", "test.domain")
+    monkeypatch.setenv("ONYX_TOKEN", "test_token")
 
-    result = amr_pipeline.generate_samplesheet(["CLIMB123"], "job_001")
+    with patch("cherami.pipelines.amr.OnyxClient") as mock_onyx_client:
+        mock_client = Mock()
+        mock_client.filter.return_value = [mock_onyx_record]
+        mock_onyx_client.return_value.__enter__.return_value = mock_client
 
-    assert result.name == "amr_samplesheet_job_001.csv"
-    assert result.exists()
+        destination = tmp_path / "CLIMB123_samplesheet.csv"
+        amr_pipeline.generate_samplesheet(["CLIMB123"], "job_001", destination)
 
-    with result.open("r") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-        assert len(rows) == 1
-        assert rows[0]["climb_id"] == "CLIMB123"
-        assert rows[0]["human_filtered_reads_1"] == "/i/dont/exist.fastq"
-        assert rows[0]["kraken_assignments"] == "/i/dont/exist/taxon_reports/CLIMB123_PlusPF.kraken_assignments.tsv"
+        assert destination.exists()
+
+        with destination.open("r") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+            assert len(rows) == 1
+            assert rows[0]["climb_id"] == "CLIMB123"
+            assert rows[0]["human_filtered_reads_1"] == "/i/dont/exist.fastq"
+            assert rows[0]["taxon_reports"] == "/i/dont/exist/taxon_reports"

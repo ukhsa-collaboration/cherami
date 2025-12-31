@@ -9,7 +9,11 @@ from pathlib import Path
 
 import click
 
-from cherami.config import parse_global_config, parse_pipeline_config, parse_worker_config
+from cherami.config import (
+    parse_global_config,
+    parse_pipeline_config,
+    parse_worker_config,
+)
 from cherami.pipeline_runner import PipelineRunner
 from cherami.pipelines import PIPELINES
 from cherami.utils import init_kubernetes, init_logging, setup_queue_logging
@@ -32,18 +36,24 @@ def _run_worker_process(
     setup_queue_logging(log_queue, log_level)
 
     worker_config = parse_worker_config(worker_name, raw_config)
-    pipeline_config = parse_pipeline_config(worker_config.pipeline_name, raw_config)
+    pipeline_config = parse_pipeline_config(
+        worker_config.pipeline_name, raw_config
+    )
     global_config = parse_global_config(raw_config)
     worker_work_dir = global_config.work_dir / worker_name
     worker_output_dir = global_config.output_dir / worker_name
 
     if worker_config.pipeline_name not in PIPELINES:
-        raise ValueError(f"Invalid pipeline '{worker_config.pipeline_name}' for worker '{worker_name}'")
+        raise ValueError(
+            f"Invalid pipeline '{worker_config.pipeline_name}' for worker '{worker_name}'"
+        )
 
     ## create a pipeline instance for the worker based on name given in config
     pipeline = PIPELINES[worker_config.pipeline_name](pipeline_config)
     ## and run
-    worker = worker_cls(worker_config, pipeline, worker_work_dir, worker_output_dir)
+    worker = worker_cls(
+        worker_config, pipeline, worker_work_dir, worker_output_dir
+    )
     worker.run(sample_log, shutdown_event)
 
 
@@ -84,7 +94,9 @@ def _launch_workers(
                         process.name,
                         process.exitcode,
                     )
-                    raise RuntimeError(f"worker process {process.name} exited unexpectedly")
+                    raise RuntimeError(
+                        f"worker process {process.name} exited unexpectedly"
+                    )
     except KeyboardInterrupt:
         logger.info("stopping workers...")
     finally:
@@ -107,7 +119,11 @@ def spawn(click_context: click.Context, worker_names: tuple[str, ...]) -> None:
     log_level = click_context.obj["log_level"]
     config = click_context.obj["config"]
 
-    selected_workers = [(name, WORKERS[name]) for name in worker_names] if worker_names else list(WORKERS.items())
+    selected_workers = (
+        [(name, WORKERS[name]) for name in worker_names]
+        if worker_names
+        else list(WORKERS.items())
+    )
     log_queue, log_process = init_logging(log, log_level)
     sample_log.parent.mkdir(parents=True, exist_ok=True)
 
@@ -132,25 +148,41 @@ def spawn(click_context: click.Context, worker_names: tuple[str, ...]) -> None:
     type=click.Choice(list(WORKERS.keys()), case_sensitive=False),
 )
 @click.pass_context
-def describe(click_context: click.Context, worker_names: tuple[str, ...]) -> None:
+def describe(
+    click_context: click.Context, worker_names: tuple[str, ...]
+) -> None:
     config = click_context.obj["config"]
     global_config = parse_global_config(config)
-    selected_workers = [(name, WORKERS[name]) for name in worker_names] if worker_names else list(WORKERS.items())
+    selected_workers = (
+        [(name, WORKERS[name]) for name in worker_names]
+        if worker_names
+        else list(WORKERS.items())
+    )
     descriptions = []
 
     for worker_name, worker_cls in selected_workers:
         worker_config = parse_worker_config(worker_name, config)
-        pipeline_config = parse_pipeline_config(worker_config.pipeline_name, config)
+        pipeline_config = parse_pipeline_config(
+            worker_config.pipeline_name, config
+        )
         if worker_config.pipeline_name not in PIPELINES:
-            raise ValueError(f"Invalid pipeline '{worker_config.pipeline_name}' for worker '{worker_name}'")
+            raise ValueError(
+                f"Invalid pipeline '{worker_config.pipeline_name}' for worker '{worker_name}'"
+            )
 
         pipeline = PIPELINES[worker_config.pipeline_name](pipeline_config)
         worker_work_dir = global_config.work_dir / worker_name
         worker_output_dir = global_config.output_dir / worker_name
-        worker = worker_cls(worker_config, pipeline, worker_work_dir, worker_output_dir)
+        worker = worker_cls(
+            worker_config, pipeline, worker_work_dir, worker_output_dir
+        )
 
         publish_queue_suffix = worker.publish_queue_suffix
-        publish_exchange = worker.publish_exchange or worker.listen_exchange if publish_queue_suffix else None
+        publish_exchange = (
+            worker.publish_exchange or worker.listen_exchange
+            if publish_queue_suffix
+            else None
+        )
         descriptions.append(
             {
                 "name": worker.worker_name,
@@ -203,14 +235,20 @@ def run(
             for pipeline_name in pipeline_names:
                 pipeline_config = parse_pipeline_config(pipeline_name, config)
                 pipeline = PIPELINES[pipeline_name](pipeline_config)
-                logger.info("Processing %s with %s pipeline", sample_id, pipeline_name)
+                logger.info(
+                    "Processing %s with %s pipeline", sample_id, pipeline_name
+                )
                 if not pipeline.should_run(sample_id):
                     logger.info("Skipping %s for %s", sample_id, pipeline_name)
                     continue
                 try:
                     pipeline.validate()
                 except Exception as e:
-                    logger.error("Pipeline validation failed for %s: %s", pipeline_name, e)
+                    logger.error(
+                        "Pipeline validation failed for %s: %s",
+                        pipeline_name,
+                        e,
+                    )
                     continue
                 job_uuid = str(uuid.uuid4())
                 try:
@@ -226,10 +264,15 @@ def run(
                         sample_id=sample_id,
                         job_uuid=job_uuid,
                         worker_work_dir=global_config.work_dir / pipeline_name,
-                        worker_output_dir=global_config.output_dir / pipeline_name,
+                        worker_output_dir=global_config.output_dir
+                        / pipeline_name,
                     )
                     if result.success:
-                        logger.info("%s completed %s successfully", sample_id, pipeline_name)
+                        logger.info(
+                            "%s completed %s successfully",
+                            sample_id,
+                            pipeline_name,
+                        )
                     else:
                         logger.error(
                             "%s failed %s: %s",
@@ -238,7 +281,12 @@ def run(
                             ", ".join(result.errors),
                         )
                 except Exception as e:
-                    logger.error("Exception running %s for %s: %s", pipeline_name, sample_id, e)
+                    logger.error(
+                        "Exception running %s for %s: %s",
+                        pipeline_name,
+                        sample_id,
+                        e,
+                    )
 
     finally:
         log_queue.put(None)
