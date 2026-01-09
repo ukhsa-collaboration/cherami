@@ -2,7 +2,9 @@ import csv
 import logging
 from pathlib import Path
 
+from cherami.config import PipelineConfig, WorkerConfig
 from cherami.pipelines.pipeline import Pipeline
+from cherami.pipelines.worker import Worker
 
 logger = logging.getLogger(__name__)
 
@@ -30,3 +32,13 @@ class OrangeBoxPipeline(Pipeline):
             "Generated orange_box samplesheet at %s",
             output_filepath,
         )
+
+
+def build_worker(
+    worker_config: WorkerConfig,
+    pipeline_config: PipelineConfig,
+    work_dir: Path,
+    output_dir: Path,
+) -> Worker:
+    pipeline = OrangeBoxPipeline(pipeline_config)
+    return Worker(worker_config, pipeline, work_dir, output_dir)

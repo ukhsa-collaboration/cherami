@@ -1,47 +1,22 @@
-import json
 import logging
 import time
-from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from kubernetes.client.api import BatchV1Api
 from kubernetes.client.exceptions import ApiException
+from onyx.exceptions import OnyxConnectionError
 
 from cherami.pipelines import Pipeline
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass()
-class PipelineResult:
-    """Outcome result for a single pipeline execution.
+class RetryablePipelineError(RuntimeError):
+    """Pipeline error eligible for retry."""
 
-    Instances are written to the JSONL sample log and used by workers to decide whether
-    retries are required via pipelines setting the `retry` flag.
-    """
 
-    sample_id: str
-    pipeline_name: str
-    job_uuid: str
-    success: bool
-    errors: list[str]
-    started_at: datetime
-    completed_at: datetime
-    retry: bool = False
-
-    def to_json(self) -> dict[str, Any]:
-        """Return a subset of fields in JSON format."""
-        return {
-            "sample_id": self.sample_id,
-            "pipeline": self.pipeline_name,
-            "job_uuid": self.job_uuid,
-            "success": self.success,
-            "errors": self.errors,
-            "started_at": self.started_at.isoformat(),
-            "completed_at": self.completed_at.isoformat(),
-        }
+class NonRetryablePipelineError(RuntimeError):
+    """Pipeline error not eligible for retry."""
 
 
 class PipelineRunner:
@@ -49,18 +24,16 @@ class PipelineRunner:
 
     Workers use this class for pipeline execution. It takes a `BasePipeline`
     configuration and uses it to create a Kubernetes Job, and waits until the run
-    completes. Ultimately returns a `PipelineResult` which is used by the worker to
-    handle success, retry, or failure states.
+    completes. The worker handles success, retry, or failure states based on
+    exceptions raised from execution.
     """
 
     def __init__(
         self,
         *,
         k8_api: BatchV1Api,
-        sample_log: Path,
     ) -> None:
         self.k8_api = k8_api
-        self._sample_log = sample_log
         logger.info("Initialised pipeline runner")
 
     def run_pipeline(
@@ -71,14 +44,12 @@ class PipelineRunner:
         job_uuid: str,
         worker_work_dir: Path,
         worker_output_dir: Path,
-    ) -> PipelineResult:
+    ) -> None:
         """Launch the given pipeline for a specific sample.
 
         Workers call this method once they have decided a sample should run.
         It validates the pipeline configuration, and wraps `_execute_pipeline`
-        for actual job orchestration, and records the outcome. Failed executions mark
-        `result.retry = True` so the worker can decide whether to re-queue the
-        sample based on configured retry limits.
+        for actual job orchestration.
 
         Args:
             pipeline: Pipeline instance to run.
@@ -87,247 +58,20 @@ class PipelineRunner:
             worker_work_dir: Output directory for intermediate files.
             worker_output_dir: Output directory for published outputs.
 
-        Returns:
-            `PipelineResult` instance for the run outcome.
-
+        Raises:
+            RetryablePipelineError: When a failure is eligible for retry.
+            NonRetryablePipelineError: For non-retryable pipeline failures.
         """
         pipeline.validate()
-        started_at = datetime.now()
-        success, errors = self._execute_pipeline(
+        self._execute_pipeline(
             pipeline=pipeline,
             sample_id=sample_id,
             job_uuid=job_uuid,
             worker_work_dir=worker_work_dir,
             worker_output_dir=worker_output_dir,
         )
-        completed_at = datetime.now()
 
-        result = PipelineResult(
-            sample_id=sample_id,
-            pipeline_name=pipeline.config.name,
-            job_uuid=job_uuid,
-            success=success,
-            errors=errors,
-            started_at=started_at,
-            completed_at=completed_at,
-        )
-
-        if not success:
-            result.retry = True
-            ## TODO: consider what error messages should stop a retry
-
-        self._log_result(result)
-        return result
-
-    def _execute_pipeline(
-        self,
-        pipeline: Pipeline,
-        sample_id: str,
-        job_uuid: str,
-        worker_work_dir: Path,
-        worker_output_dir: Path,
-    ) -> tuple[bool, list[str]]:
-        """Submit the Kubernetes Job and return the result of execution.
-
-        This method generates the samplesheet and job manifest from the pipeline configuration,
-        submits the job to Kubernetes, then enters a loop checking job status every 10
-        seconds. The job can complete in three ways: success (pod exits 0 and trace file passes),
-        failure (e.g. pod exhausted backoff limit), or timeout (exceeded job_timeout). When the pod
-        exits successfully, the method checks the Nextflow trace file to verify all processes
-        exited with allowed codes.
-
-        Args:
-            pipeline: Pipeline instance to run.
-            sample_id: Sample identifier to run the pipeline for.
-            job_uuid: Unique job UUID for this pipeline run.
-            worker_work_dir: Output directory for intermediate files.
-            worker_output_dir: Output directory for published outputs.
-
-        Returns:
-            A tuple containing a boolean indicating success, and a list of error messages.
-        """
-        job_name = f"{pipeline.config.name}-{job_uuid}"
-        errors = []
-        job_dirs = self._create_dirs(
-            sample_id, worker_work_dir, worker_output_dir
-        )
-
-        try:
-            ## to handle situations where a worker crashes with jobs pending, here poll for an existing job with same
-            ## name, if this returns something we can assume the job is already running or has completed within the k8
-            ## TTL window so can "re-attach" to it and move straight to the validation loop. If the job isnt found, it
-            ## is created like normal
-            jobs = self.k8_api.list_namespaced_job(
-                namespace=pipeline.config.namespace,
-                field_selector=f"metadata.name={job_name}",
-                limit=1,
-            )
-            job_exists = bool(jobs.items)
-
-            if not job_exists:
-                try:
-                    pipeline.generate_samplesheet(
-                        [sample_id],
-                        job_uuid,
-                        job_dirs["samplesheet_path"],
-                    )
-                except Exception as e:
-                    errors.append(f"samplesheet_generation_failed: {e}")
-                    return False, errors
-
-                job_manifest = pipeline.create_job_manifest(
-                    job_id=job_uuid,
-                    climb_id=sample_id,
-                    job_dirs=job_dirs,
-                )
-
-                logger.info(
-                    "Creating job %s for pipeline %s",
-                    job_name,
-                    pipeline.config.name,
-                )
-                try:
-                    self.k8_api.create_namespaced_job(
-                        body=job_manifest,
-                        namespace=pipeline.config.namespace,
-                    )
-                except ApiException as e:
-                    ## if somehow the first check missed an existing job capture the 409 error here and let it continue
-                    ## to the validation loop, otherwise raise any other exceptions
-                    if e.status == 409:
-                        logger.warning(
-                            "Job %s already exists; attaching to existing run",
-                            job_name,
-                        )
-                    else:
-                        raise
-            else:
-                logger.info(
-                    "Attaching to existing job %s for pipeline %s",
-                    job_name,
-                    pipeline.config.name,
-                )
-
-            reported_failed_pods = 0
-
-            while True:
-                resp = self.k8_api.read_namespaced_job_status(
-                    name=job_name,
-                    namespace=pipeline.config.namespace,
-                )
-                status = resp.status  # type: ignore
-
-                if status and status.succeeded:
-                    logger.info("k8 job %s completed", job_name)
-
-                    trace_file = job_dirs["output_dir"] / "pipeline_trace.txt"
-
-                    if not trace_file.exists():
-                        error_msg = f"trace_file_missing: {trace_file}"
-                        errors.append(error_msg)
-                        logger.error(
-                            "Pipeline %s for sample %s missing trace file %s",
-                            pipeline.config.name,
-                            sample_id,
-                            trace_file,
-                        )
-                        self._cleanup_job(job_name=job_name, pipeline=pipeline)
-                        return False, errors
-
-                    success = pipeline.evaluate_exit_status(trace_file)
-
-                    if success:
-                        return True, errors
-
-                    error_msg = f"trace_evaluation_failure: Pipeline {pipeline.config.name} processes failed"
-                    errors.append(error_msg)
-                    logger.error(
-                        "Pipeline %s for sample %s failed trace evaluation",
-                        pipeline.config.name,
-                        sample_id,
-                    )
-                    self._cleanup_job(job_name=job_name, pipeline=pipeline)
-                    return False, errors
-
-                if status and status.failed:
-                    failed_count = status.failed
-                    if failed_count > reported_failed_pods:
-                        logger.error(
-                            "k8 job %s pod failed (%d/%d)",
-                            job_name,
-                            failed_count,
-                            pipeline.config.backoff_limit,
-                        )
-                        reported_failed_pods = failed_count
-
-                    if failed_count >= pipeline.config.backoff_limit:
-                        logger.error(
-                            "k8 job %s exhausted backoff limit", job_name
-                        )
-                        errors.append(
-                            f"pod_failure: Job {job_name} exhausted backoff limit "
-                            f"({pipeline.config.backoff_limit} attempts)"
-                        )
-                        self._cleanup_job(job_name=job_name, pipeline=pipeline)
-                        return False, errors
-
-                if (
-                    status.start_time
-                    and time.time() - status.start_time.timestamp()
-                    > pipeline.config.job_timeout
-                ):
-                    logger.error("k8 job %s timed out", job_name)
-                    errors.append(
-                        f"pod_failure: Job {job_name} timed out after {pipeline.config.job_timeout} seconds"
-                    )
-                    self._cleanup_job(job_name=job_name, pipeline=pipeline)
-                    return False, errors
-
-                logger.debug("k8 job %s still running...", job_name)
-                time.sleep(10)
-
-        except Exception as e:
-            error_msg = f"exception: A pipeline failed with an unhandled exception: {e}"
-            errors.append(error_msg)
-            logger.exception(
-                "Exception running pipeline %s for sample %s",
-                pipeline.config.name,
-                sample_id,
-            )
-            self._cleanup_job(job_name=job_name, pipeline=pipeline)
-
-        return False, errors
-
-    def _create_dirs(
-        self, sample_id: str, worker_work_dir: Path, worker_output_dir: Path
-    ) -> dict[str, Path]:
-        ## creates all the dirs to run a sample
-        sample_work_dir = worker_work_dir / sample_id
-        sample_output_dir = worker_output_dir / sample_id
-
-        nxf_work_dir = sample_work_dir / f"{sample_id}_nxf_work"
-        nxf_home_dir = worker_work_dir / ".nextflow"
-        nxf_log_file = sample_work_dir / f"{sample_id}.log"
-
-        samplesheet_path = sample_work_dir / f"{sample_id}_samplesheet.csv"
-
-        worker_work_dir.mkdir(parents=True, exist_ok=True)
-        worker_output_dir.mkdir(parents=True, exist_ok=True)
-        sample_work_dir.mkdir(parents=True, exist_ok=True)
-        nxf_work_dir.mkdir(parents=True, exist_ok=True)
-        nxf_home_dir.mkdir(parents=True, exist_ok=True)
-        sample_output_dir.mkdir(parents=True, exist_ok=True)
-
-        return {
-            "working_dir": sample_work_dir,
-            "output_dir": sample_output_dir,
-            "nxf_work_dir": nxf_work_dir,
-            "nxf_home_dir": nxf_home_dir,
-            "nxf_log_file": nxf_log_file,
-            "samplesheet_path": samplesheet_path,
-        }
-
-    def _cleanup_job(self, *, job_name: str, pipeline: Pipeline) -> None:
+    def _cleanup(self, *, job_name: str, pipeline: Pipeline) -> None:
         """Delete a Kubernetes Job and wait for deletion to complete.
 
         Kubernetes job deletion is asynchronous, so this method polls for up to 60 seconds
@@ -371,17 +115,265 @@ class PipelineRunner:
                 )
                 return
 
-    def _log_result(self, result: PipelineResult) -> None:
-        """Append a JSONL record describing the run outcome."""
-        if not self._sample_log:
-            return
+    def _evaluate_trace(
+        self,
+        *,
+        pipeline: Pipeline,
+        sample_id: str,
+        job_dirs: dict[str, Path],
+    ) -> bool:
+        trace_file = job_dirs["output_dir"] / "pipeline_trace.txt"
+
+        if not trace_file.exists():
+            logger.error(
+                "Pipeline %s for sample %s missing trace file %s",
+                pipeline.config.name,
+                sample_id,
+                trace_file,
+            )
+            raise NonRetryablePipelineError(
+                f"trace_file_missing: {trace_file}"
+            )
+
+        success = pipeline.evaluate_exit_status(trace_file)
+
+        if success:
+            return True
+
+        logger.error(
+            "Pipeline %s for sample %s failed trace evaluation",
+            pipeline.config.name,
+            sample_id,
+        )
+        raise NonRetryablePipelineError(
+            f"trace_evaluation_failure: Pipeline {pipeline.config.name} processes failed"
+        )
+
+    def _poll_job(
+        self,
+        *,
+        pipeline: Pipeline,
+        job_name: str,
+    ) -> str:
+        reported_failed_pods = 0
+
+        while True:
+            resp = self.k8_api.read_namespaced_job_status(
+                name=job_name,
+                namespace=pipeline.config.namespace,
+            )
+            status = resp.status  # type: ignore
+
+            if status and status.succeeded:
+                logger.info("k8 job %s completed", job_name)
+                return "succeeded"
+
+            if status and status.failed:
+                failed_count = status.failed
+                if failed_count > reported_failed_pods:
+                    logger.error(
+                        "k8 job %s pod failed (%d/%d)",
+                        job_name,
+                        failed_count,
+                        pipeline.config.backoff_limit,
+                    )
+                    reported_failed_pods = failed_count
+
+                if failed_count >= pipeline.config.backoff_limit:
+                    logger.error("k8 job %s exhausted backoff limit", job_name)
+                    raise NonRetryablePipelineError(
+                        f"pod_failure: Job {job_name} exhausted backoff limit "
+                        f"({pipeline.config.backoff_limit} attempts)"
+                    )
+
+            if (
+                status.start_time
+                and time.time() - status.start_time.timestamp()
+                > pipeline.config.job_timeout
+            ):
+                logger.error("k8 job %s timed out", job_name)
+                raise RetryablePipelineError(
+                    f"pod_failure: Job {job_name} timed out after "
+                    f"{pipeline.config.job_timeout} seconds"
+                )
+
+            logger.debug("k8 job %s still running...", job_name)
+            time.sleep(10)
+
+    def _create_job(
+        self,
+        *,
+        pipeline: Pipeline,
+        job_name: str,
+        sample_id: str,
+        job_uuid: str,
+        job_dirs: dict[str, Path],
+    ) -> None:
+        ## to handle situations where a worker crashes with jobs pending, here poll for an existing job with same
+        ## name, if this returns something we can assume the job is already running or has completed within the k8
+        ## TTL window so can "re-attach" to it and move straight to the validation loop. If the job isnt found, it
+        ## is created like normal
+        jobs = self.k8_api.list_namespaced_job(
+            namespace=pipeline.config.namespace,
+            field_selector=f"metadata.name={job_name}",
+            limit=1,
+        )
+        job_exists = bool(jobs.items)
+
+        if not job_exists:
+            pipeline.generate_samplesheet(
+                [sample_id],
+                job_uuid,
+                job_dirs["samplesheet_path"],
+            )
+
+            job_manifest = pipeline.create_job_manifest(
+                job_id=job_uuid,
+                climb_id=sample_id,
+                job_dirs=job_dirs,
+            )
+
+            logger.info(
+                "Creating job %s for pipeline %s",
+                job_name,
+                pipeline.config.name,
+            )
+            try:
+                self.k8_api.create_namespaced_job(
+                    body=job_manifest,
+                    namespace=pipeline.config.namespace,
+                )
+            except ApiException as e:
+                ## if somehow the first check missed an existing job capture the 409 error here and let it continue
+                ## to the validation loop, otherwise raise any other exceptions
+                if e.status == 409:
+                    logger.warning(
+                        "Job %s already exists; attaching to existing run",
+                        job_name,
+                    )
+                else:
+                    raise
+        else:
+            logger.info(
+                "Attaching to existing job %s for pipeline %s",
+                job_name,
+                pipeline.config.name,
+            )
+
+    def _create_dirs(
+        self, sample_id: str, worker_work_dir: Path, worker_output_dir: Path
+    ) -> dict[str, Path]:
+        ## creates all the dirs to run a sample
+        sample_work_dir = worker_work_dir / sample_id
+        sample_output_dir = worker_output_dir / sample_id
+
+        nxf_work_dir = sample_work_dir / f"{sample_id}_nxf_work"
+        nxf_home_dir = worker_work_dir / ".nextflow"
+        nxf_log_file = sample_work_dir / f"{sample_id}.log"
+
+        samplesheet_path = sample_work_dir / f"{sample_id}_samplesheet.csv"
+
+        worker_work_dir.mkdir(parents=True, exist_ok=True)
+        worker_output_dir.mkdir(parents=True, exist_ok=True)
+        sample_work_dir.mkdir(parents=True, exist_ok=True)
+        nxf_work_dir.mkdir(parents=True, exist_ok=True)
+        nxf_home_dir.mkdir(parents=True, exist_ok=True)
+        sample_output_dir.mkdir(parents=True, exist_ok=True)
+
+        return {
+            "working_dir": sample_work_dir,
+            "output_dir": sample_output_dir,
+            "nxf_work_dir": nxf_work_dir,
+            "nxf_home_dir": nxf_home_dir,
+            "nxf_log_file": nxf_log_file,
+            "samplesheet_path": samplesheet_path,
+        }
+
+    def _execute_pipeline(
+        self,
+        pipeline: Pipeline,
+        sample_id: str,
+        job_uuid: str,
+        worker_work_dir: Path,
+        worker_output_dir: Path,
+    ) -> None:
+        """Submit the Kubernetes Job and return the result of execution.
+
+        This method generates the samplesheet and job manifest from the pipeline configuration,
+        submits the job to Kubernetes, then enters a loop checking job status every 10
+        seconds. The job can complete in three ways: success (pod exits 0 and trace file passes),
+        failure (e.g. pod exhausted backoff limit), or timeout (exceeded job_timeout). When the pod
+        exits successfully, the method checks the Nextflow trace file to verify all processes
+        exited with allowed codes.
+
+        Args:
+            pipeline: Pipeline instance to run.
+            sample_id: Sample identifier to run the pipeline for.
+            job_uuid: Unique job UUID for this pipeline run.
+            worker_work_dir: Output directory for intermediate files.
+            worker_output_dir: Output directory for published outputs.
+
+        Raises:
+            RetryablePipelineError: When a failure is eligible for retry.
+            NonRetryablePipelineError: For non-retryable pipeline failures.
+        """
+        job_name = f"{pipeline.config.name}-{job_uuid}"
+        job_dirs = self._create_dirs(
+            sample_id, worker_work_dir, worker_output_dir
+        )
 
         try:
-            self._sample_log.parent.mkdir(parents=True, exist_ok=True)
-            with self._sample_log.open("a", encoding="utf-8") as file_handle:
-                file_handle.write(json.dumps(result.to_json()))
-                file_handle.write("\n")
-        except Exception:
-            logger.error(
-                "Failed writing pipeline log for sample %s", result.sample_id
+            self._create_job(
+                pipeline=pipeline,
+                job_name=job_name,
+                sample_id=sample_id,
+                job_uuid=job_uuid,
+                job_dirs=job_dirs,
             )
+
+            status = self._poll_job(
+                pipeline=pipeline,
+                job_name=job_name,
+            )
+
+            if status == "succeeded":
+                self._evaluate_trace(
+                    pipeline=pipeline,
+                    sample_id=sample_id,
+                    job_dirs=job_dirs,
+                )
+                return
+
+            raise RuntimeError("Pipeline execution failed")
+
+        except OnyxConnectionError as e:
+            try:
+                self._cleanup(job_name=job_name, pipeline=pipeline)
+            except Exception:
+                logger.exception("Failed to cleanup job %s", job_name)
+            raise RetryablePipelineError(
+                "Onyx connection error running pipeline"
+            ) from e
+
+        except ApiException as e:
+            try:
+                self._cleanup(job_name=job_name, pipeline=pipeline)
+            except Exception:
+                logger.exception("Failed to cleanup job %s", job_name)
+            raise RetryablePipelineError(
+                "Kubernetes API error running pipeline"
+            ) from e
+
+        except (RetryablePipelineError, NonRetryablePipelineError):
+            try:
+                self._cleanup(job_name=job_name, pipeline=pipeline)
+            except Exception:
+                logger.exception("Failed to cleanup job %s", job_name)
+            raise
+
+        except Exception as e:
+            try:
+                self._cleanup(job_name=job_name, pipeline=pipeline)
+            except Exception:
+                logger.exception("Failed to cleanup job %s", job_name)
+            raise NonRetryablePipelineError("Pipeline execution failed") from e

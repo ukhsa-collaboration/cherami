@@ -1,12 +1,15 @@
 import json
 import logging
 import time
-from multiprocessing.synchronize import Event
 from pathlib import Path
 from typing import Any
 
 from cherami.config import WorkerConfig
-from cherami.pipeline_runner import PipelineRunner
+from cherami.pipeline_runner import (
+    NonRetryablePipelineError,
+    PipelineRunner,
+    RetryablePipelineError,
+)
 from cherami.pipelines import Pipeline
 from cherami.utils import init_kubernetes, init_varys
 
@@ -16,13 +19,13 @@ class Worker:
     pipelines.
 
     The base class implements orchestration methods common to every worker. It
-    binds to the configured exchange, loads an associated Pipelines config, and executes
-    pipelines via the `PipelineRunner` module. Subclasses expose the pipeline they run via the `pipeline`
-    property. However, subclasses can optionally override the `on_skip`, `on_success`, `on_retry`,
-    and `on_catastrophic_error` methods to define additional behaviour when a these events happen.
+    binds to the configured exchange and executes pipelines via the
+    `PipelineRunner` module. Subclasses can optionally override `on_skip`,
+    `on_success`, `on_retry`, and `on_sample_failure` to define additional
+    behaviour when these events occur.
 
     For example, a subclass could override `on_success` to push a payload to another message queue, or
-    override `on_catastrophic_error` to send an alert to an error message queue.
+    override `on_sample_failure` to send an alert to an error message queue.
 
     Attributes:
         worker_name: Human-readable identifier for the worker
@@ -55,7 +58,7 @@ class Worker:
         self._varys_client: Any
         self._runner: PipelineRunner
         self.logger = logging.getLogger(
-            f"cherami.workers.{worker_config.worker_name}"
+            f"cherami.pipelines.{worker_config.worker_name}"
         )
         self._retry_counts: dict[str, int] = {}
         self.work_dir = work_dir
@@ -64,13 +67,11 @@ class Worker:
     def on_skip(self, message: Any) -> None:
         """Called when a message is to be skipped.
 
-        By default will acknowledge the provided message.
-                Called when `pipeline.should_run(sample_id)` returns `False`, indicating the sample should not be processed.
-                The default implementation acknowledges the message and moves on. Override this if you need custom behavior
-                when skipping samples, such as logging to a separate queue etc etc
-
-                Args:
-                    message: Varys message representing a sample that should NOT launch a pipeline.
+        Called when `pipeline.should_run(sample_id)` returns `False`, indicating
+        the sample should not be processed. The default implementation
+        acknowledges the message and moves on. Override this if you need
+        custom behavior when skipping samples, such as logging to a separate
+        queue.
         """
         self._varys_client.acknowledge_message(message)
 
@@ -111,7 +112,7 @@ class Worker:
         again later.
 
         The worker increments the retry count in `_retry_counts` each time a sample is attempted. Once
-        the count reaches `pipeline.config.max_retries`, the worker calls `on_catastrophic_error` instead.
+        the count reaches `pipeline.config.max_retries`, the worker calls `on_sample_failure` instead.
 
         Override this if you need custom retry behavior, such as changing retry behaviour or routing
         retries to a different queue.
@@ -127,46 +128,55 @@ class Worker:
     ) -> None:
         """Called when a pipeline run fails and is NOT eligible for retry.
 
-        The default implementation acknowledges the message to remove it from the queue, preventing it
-        from being reprocessed indefinitely.
-
-        Override this if you need to handle failures specially, such as logging to an error
-        queue, sending alerts, or writing to a dead letter queue.
+        The default implementation is a no-op. Override this if you need to handle failures
+        specially, such as logging to an error queue, sending alerts, or writing to a dead
+        letter queue.
 
         Args:
             message: Varys message representing a sample that has failed.
         """
-        self._varys_client.acknowledge_message(message)
         ## TODO: consider publishing to an error queue if configured
 
-    def run(self, sample_log: Path, shutdown_event: Event) -> None:
+    def _parse_message(
+        self,
+        message: Any,
+    ) -> tuple[dict[str, Any], str, str]:
+        payload = json.loads(message.body)
+
+        climb_id = payload.get("climb_id")
+        job_uuid = payload.get("match_uuid")
+
+        if not climb_id or not job_uuid:
+            raise ValueError("Message missing climb_id or match_uuid")
+
+        return payload, climb_id, job_uuid
+
+    def run(self) -> None:
         """Main worker loop, consuming messages and launching pipelines as required.
 
-        Main entry point for the worker when spawned. This is a long-running method that will listen for messages on
-        the configured Varys exchange/queue, and launch pipelines as required.
+        Main entry point for the worker. This is a long-running method that
+        listens for messages on the configured Varys exchange/queue and launches
+        pipelines as required.
 
-        Args:
-            sample_log: Path to sample log.
-            shutdown_event: Shutdown event
+        The loop only exits if the worker raises or the process is terminated.
         """
         self._varys_client = init_varys(
             self.varys_config_path, self.varys_log_path
         )
         self._runner = PipelineRunner(
             k8_api=init_kubernetes(),
-            sample_log=sample_log,
         )
         pipeline = self.pipeline
         message = None
         try:
-            while not shutdown_event.is_set():
+            while True:
                 ## the basic flow  of a worker is first check first for any messages - listening to varys is blocking.
                 ## If there are no messages after the timeout, poll again and wait. If there is a message, parse it to
                 ## get sample_id and uuid and call the `should_run` method on the pipeline to see if passess decision
                 ## logic. If it does not pass, call `on_skip` to ack and move to next sample. If it does pass, call
-                ## `run_pipeline` on the `PipelineRunner` instance to then launch the pipeline. The result of that call
-                ## indicates success/failure. If success, call `on_success` to ack and potentially publish to next
-                ## queue. If failure, it will be retried up to `max_retries`, calling `on_retry` to nack the message so
+                ## `run_pipeline` on the `PipelineRunner` instance to then launch the pipeline. Exceptions indicate
+                ## failure states. If success, call `on_success` to ack and potentially publish to next queue. If
+                ## failure, it will be retried up to `max_retries`, calling `on_retry` to nack the message so
                 ## it goes back to the queue. If max_retries is exceeded, call `on_sample_failure` to ack and handle
                 # the error to move on.
                 try:
@@ -180,13 +190,7 @@ class Worker:
                         time.sleep(5)
                         continue
 
-                    payload = json.loads(message.body)
-
-                    climb_id = payload.get("climb_id")
-                    job_uuid = payload.get("match_uuid")
-
-                    ## TODO: Handle dodgy payloads
-                    ## probably ack and log
+                    payload, climb_id, job_uuid = self._parse_message(message)
 
                     if not pipeline.should_run(climb_id):
                         self.logger.info(
@@ -207,66 +211,54 @@ class Worker:
                         current_attempt,
                         total_attempts,
                     )
-                    result = self._runner.run_pipeline(
-                        pipeline=pipeline,
-                        sample_id=climb_id,
-                        job_uuid=job_uuid,
-                        worker_work_dir=self.work_dir,
-                        worker_output_dir=self.output_dir,
-                    )
-
-                    if result.success:
-                        self.logger.info(
-                            "Pipeline %s succeeded for sample %s",
-                            pipeline.config.name,
-                            climb_id,
+                    try:
+                        self._runner.run_pipeline(
+                            pipeline=pipeline,
+                            sample_id=climb_id,
+                            job_uuid=job_uuid,
+                            worker_work_dir=self.work_dir,
+                            worker_output_dir=self.output_dir,
                         )
-                        self._retry_counts.pop(climb_id, None)
-                        self.on_success(message, payload)
-                    else:
-                        self.logger.error(
-                            "Pipeline %s failed for sample %s with errors: %s",
-                            pipeline.config.name,
-                            climb_id,
-                            "|".join(result.errors),
-                        )
-
+                    except RetryablePipelineError as e:
                         if current_attempt >= total_attempts:
-                            self.logger.error(
-                                "Pipeline %s exhausted max retries for sample %s",
-                                pipeline.config.name,
-                                climb_id,
-                            )
-                            self.logger.error(
-                                "Catastrophic error for sample %s", climb_id
-                            )
                             self._retry_counts.pop(climb_id, None)
-                            self.on_sample_failure(message)
-                        else:
-                            if result.retry:
-                                next_attempt = current_attempt + 1
-                                self.logger.warning(
-                                    "Retrying pipeline %s for sample %s (next attempt %d/%d)",
-                                    pipeline.config.name,
-                                    climb_id,
-                                    next_attempt,
-                                    total_attempts,
-                                )
-                                self.on_retry(message)
-                            else:
-                                self.logger.error(
-                                    "Catastrophic error for sample %s",
-                                    climb_id,
-                                )
-                                self.on_sample_failure(message)
+                            raise RuntimeError(
+                                "Pipeline retries exhausted"
+                            ) from e
+
+                        next_attempt = current_attempt + 1
+                        self.logger.warning(
+                            "Retrying pipeline %s for sample %s (next attempt %d/%d)",
+                            pipeline.config.name,
+                            climb_id,
+                            next_attempt,
+                            total_attempts,
+                        )
+                        self.on_retry(message)
+                        continue
+                    except NonRetryablePipelineError as e:
+                        self._retry_counts.pop(climb_id, None)
+                        raise RuntimeError(
+                            "Non-retryable pipeline error"
+                        ) from e
+
+                    self.logger.info(
+                        "Pipeline %s succeeded for sample %s",
+                        pipeline.config.name,
+                        climb_id,
+                    )
+                    self._retry_counts.pop(climb_id, None)
+                    self.on_success(message, payload)
+                except RuntimeError:
+                    self.logger.exception(
+                        "Worker stopping due to pipeline failure"
+                    )
+                    raise
                 except Exception as e:
                     self.logger.exception(
                         "Unhandled exception in worker: %s", str(e)
                     )
-                    self.on_sample_failure(message)
-                    ## TODO: we might consider retrying here if we got a valid message and payload
-                    ## possibly an exception might be rasied from something transient like k8s failure
-                    ## and so re-running might be a valid option.
+                    raise
         finally:
             self.logger.info("%s worker stopping", self.worker_name)
             self._varys_client.close()

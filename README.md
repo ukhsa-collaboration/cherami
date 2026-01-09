@@ -36,9 +36,9 @@ Commands:
 
 Global options:
 ```
---sample-log <PATH> - File path for per-pipeline results (default ./sample_log.jsonl)
 --log <PATH> - log file path; logs to stderr when omitted
 --log-level <DEBUG|INFO|WARNING|ERROR> - default INFO
+--audit-db <PATH> - audit SQLite database (default ./sample_audit.db)
 --config <PATH> - path to cherami config (or set CHERAMI_CONFIG)
 ```
 ## Sub-commands
