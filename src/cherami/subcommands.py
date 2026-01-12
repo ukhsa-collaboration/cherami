@@ -78,19 +78,27 @@ def describe(click_context: click.Context, config_path: Path) -> None:
     click.echo(json.dumps(json_payload, indent=2, sort_keys=False))
 
 
-@click.command(name="evalute")
+@click.command(name="evaluate")
 @click.argument(
     "config_path",
     type=click.Path(dir_okay=False, path_type=Path),
 )
 @click.argument("sample_ids", nargs=-1, required=True)
-def evaluate(config_path: Path, sample_ids: tuple[str, ...]) -> None:
-    config: CheramiConfig = load_config(config_path)
-    pipeline_names = [config.pipeline_config.name]
-    for sample_id in sample_ids:
-        for pipeline_name in pipeline_names:
-            pipeline_config = config.pipeline_config
-            pipeline_module = load_pipeline_module(pipeline_name)
-            pipeline = pipeline_module.build_pipeline(pipeline_config)
-            should_run = pipeline.should_run(sample_id)
-            click.echo(f"{sample_id}\t{pipeline_name}\t{should_run}")
+@click.pass_context
+def evaluate(
+    click_context: click.Context,
+    config_path: Path,
+    sample_ids: tuple[str, ...],
+) -> None:
+    log = click_context.obj["log"]
+    log_level = click_context.obj["log_level"]
+    init_logging(log, log_level)
+
+    config = load_config(config_path)
+    pipeline_module = load_pipeline_module(config.pipeline_config.name)
+    pipeline = pipeline_module.build_pipeline(config.pipeline_config)
+
+    results = {
+        sample_id: pipeline.should_run(sample_id) for sample_id in sample_ids
+    }
+    click.echo(json.dumps(results, indent=2, sort_keys=False))

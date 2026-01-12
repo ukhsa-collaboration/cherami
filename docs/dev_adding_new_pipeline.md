@@ -72,6 +72,7 @@ Create `src/cherami/pipelines/my_pipeline.py`.
 This module at minimum needs:
 - a `Pipeline` subclass
 - a `build_worker(...)` function that constructs the pipeline and returns a `Worker` object.
+- a `build_pipeline(...)` function that constructs the pipeline and returns a `Pipeline` object.
 
 Example using the base `Worker` class:
 
@@ -90,13 +91,17 @@ class MyPipeline(Pipeline):
         ...
 
 
+def build_pipeline(pipeline_config: PipelineConfig) -> Pipeline:
+    return MyPipeline(pipeline_config)
+
+
 def build_worker(
     worker_config: WorkerConfig,
     pipeline_config: PipelineConfig,
     work_dir: Path,
     output_dir: Path,
 ) -> Worker:
-    pipeline = MyPipeline(pipeline_config)
+    pipeline = build_pipeline(pipeline_config)
     return Worker(worker_config, pipeline, work_dir, output_dir)
 ```
 
@@ -162,4 +167,10 @@ To print a json representation of the message queue linkage for a config:
 
 ```bash
 uv run cherami describe path/to/config.json
+```
+
+To evaluate `should_run(sample_id)` without needing to spawn workers use:
+
+```bash
+uv run cherami evaluate path/to/config.json SAMPLE_1 SAMPLE_2
 ```

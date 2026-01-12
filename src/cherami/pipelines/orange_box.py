@@ -40,5 +40,9 @@ def build_worker(
     work_dir: Path,
     output_dir: Path,
 ) -> Worker:
-    pipeline = OrangeBoxPipeline(pipeline_config)
+    pipeline = build_pipeline(pipeline_config)
     return Worker(worker_config, pipeline, work_dir, output_dir)
+
+
+def build_pipeline(pipeline_config: PipelineConfig) -> Pipeline:
+    return OrangeBoxPipeline(pipeline_config)
