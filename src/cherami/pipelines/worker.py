@@ -160,9 +160,11 @@ class Worker:
 
         The loop only exits if the worker raises or the process is terminated.
         """
+        self.logger.info("Serving worker %s", self.worker_name)
         self._varys_client = init_varys(
             self.varys_config_path, self.varys_log_path
         )
+        self.logger.info("Worker listening on %s", self.listen_exchange)
         self._runner = PipelineRunner(
             k8_api=init_kubernetes(),
         )
@@ -191,6 +193,11 @@ class Worker:
                         continue
 
                     payload, climb_id, job_uuid = self._parse_message(message)
+                    self.logger.info(
+                        "Received message climb id: %s uuid: %s",
+                        climb_id,
+                        job_uuid,
+                    )
 
                     if not pipeline.should_run(climb_id):
                         self.logger.info(

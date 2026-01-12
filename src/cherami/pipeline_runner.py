@@ -34,7 +34,6 @@ class PipelineRunner:
         k8_api: BatchV1Api,
     ) -> None:
         self.k8_api = k8_api
-        logger.info("Initialised pipeline runner")
 
     def run_pipeline(
         self,
@@ -120,6 +119,7 @@ class PipelineRunner:
         *,
         pipeline: Pipeline,
         sample_id: str,
+        job_name: str,
         job_dirs: dict[str, Path],
     ) -> bool:
         trace_file = job_dirs["output_dir"] / "pipeline_trace.txt"
@@ -130,6 +130,11 @@ class PipelineRunner:
                 pipeline.config.name,
                 sample_id,
                 trace_file,
+            )
+            logger.info(
+                "Job for %s (%s) failed",
+                sample_id,
+                job_name,
             )
             raise NonRetryablePipelineError(
                 f"trace_file_missing: {trace_file}"
@@ -144,6 +149,11 @@ class PipelineRunner:
             "Pipeline %s for sample %s failed trace evaluation",
             pipeline.config.name,
             sample_id,
+        )
+        logger.info(
+            "Job for %s (%s) failed",
+            sample_id,
+            job_name,
         )
         raise NonRetryablePipelineError(
             f"trace_evaluation_failure: Pipeline {pipeline.config.name} processes failed"
@@ -236,9 +246,9 @@ class PipelineRunner:
             )
 
             logger.info(
-                "Creating job %s for pipeline %s",
+                "Creating job for %s job name: %s",
+                sample_id,
                 job_name,
-                pipeline.config.name,
             )
             try:
                 self.k8_api.create_namespaced_job(
@@ -342,7 +352,13 @@ class PipelineRunner:
                 self._evaluate_trace(
                     pipeline=pipeline,
                     sample_id=sample_id,
+                    job_name=job_name,
                     job_dirs=job_dirs,
+                )
+                logger.info(
+                    "Job for %s (%s) completed successfully",
+                    sample_id,
+                    job_name,
                 )
                 return
 

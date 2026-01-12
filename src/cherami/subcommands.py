@@ -26,6 +26,7 @@ def serve(click_context: click.Context, config_path: Path) -> None:
     pipeline_module = load_pipeline_module(config.pipeline_config.name)
     worker_builder = pipeline_module.build_worker
     worker_config = config.worker_config
+    logger.debug("Worker config: %s", worker_config)
     worker_work_dir, worker_output_dir = config.pipeline_dirs()
     worker = worker_builder(
         worker_config,
