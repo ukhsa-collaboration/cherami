@@ -28,10 +28,9 @@ cherami is the mSCAPE orchestration module for pathogen pipelines, designed to r
 Usage: cherami [OPTIONS] COMMAND [ARGS]...
 
 Commands:
+  serve
   describe
   evaluate
-  run
-  spawn
 ```
 
 Global options:
@@ -39,20 +38,19 @@ Global options:
 --log <PATH> - log file path; logs to stderr when omitted
 --log-level <DEBUG|INFO|WARNING|ERROR> - default INFO
 --audit-db <PATH> - audit SQLite database (default ./sample_audit.db)
---config <PATH> - path to cherami config (or set CHERAMI_CONFIG)
 ```
 ## Sub-commands
 
-### spawn
-Main entrypoint. Launch one or more workers that listen for queue messages and run pipelines.
+### serve
+Main entrypoint. Launch the worker defined by a config file.
 
 ```
-cherami --config <config_file> --log worker.log spawn [WORKER_NAMES...]
+cherami serve <config>
 ```
 
 ## Configuration
 
-cherami requires a JSON configuration file, provided via the `--config` option or the `CHERAMI_CONFIG` environment variable. This file configures both the available pipelines and the workers that will run those pipelines. This configuration is required for cherami to run. Examples are provided in the `configs` folder.
+cherami requires a JSON configuration file passed as the `config_path` argument to commands like `serve` and `describe`. This file configures the pipeline and worker pair for execution. Examples are provided in the `configs` folder.
 
 Further documentation for the config file can be found [here](docs/dev_config.md).
 
@@ -68,4 +66,4 @@ Kubernetes is used as the execution platform for pipelines. For each incoming sa
 
 ### For developers
 
-For development notes please refer to [dev.md](docs/dev.md)
+For development notes please refer to [docs/README.md](docs/README.md)

@@ -53,7 +53,7 @@ An example varys config file for this configuration:
 }
 ```
 
-Then run `cherami run <worker>` to listen to messages sent on the created exchange
+Then run `cherami serve path/to/config.json` to listen to messages sent on the created exchange
 
 An example helper script to test payloads is included in `./scripts/send.py` e.g:
 ```bash
@@ -62,25 +62,17 @@ uv run scripts/send.py
 
 ### Debug commands
 
-#### run
-Run one or more pipelines directly against provided sample IDs.
+#### serve
+Run the worker defined in a pipeline config file.
 
 ```
-cherami run SAMPLE_ID... --pipelines PIPELINE1,PIPELINE2
+cherami serve path/to/config.json
 ```
 
 #### describe
-Shows listen exchange/queue and publish exchange/queue for the selected workers (or all workers when none are specified).
+Shows listen exchange/queue and publish exchange/queue for the worker described by a config file.
 ```
-cherami describe [WORKER_NAMES...]
-```
-
-#### evaluate
-Check whether pipelines would run for given samples without launching jobs.
-
-```
-cherami evaluate SAMPLE_ID... [--pipelines PIPELINE1,PIPELINE2]
+cherami describe path/to/config.json
 ```
 
-Outputs a TSV file with a pipelines `should_run` decision.
-
+For pipeline/worker implementation guidance see `docs/dev_adding_new_pipeline.md`.
