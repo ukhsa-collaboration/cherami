@@ -175,7 +175,6 @@ class PipelineRunner:
             status = resp.status  # type: ignore
 
             if status and status.succeeded:
-                logger.info("k8 job %s completed", job_name)
                 return "succeeded"
 
             if status and status.failed:
@@ -267,9 +266,8 @@ class PipelineRunner:
                     raise
         else:
             logger.info(
-                "Attaching to existing job %s for pipeline %s",
+                "Attaching to existing job %s",
                 job_name,
-                pipeline.config.name,
             )
 
     def _create_dirs(

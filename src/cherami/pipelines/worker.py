@@ -160,11 +160,13 @@ class Worker:
 
         The loop only exits if the worker raises or the process is terminated.
         """
-        self.logger.info("Serving worker %s", self.worker_name)
+        self.logger.info("Serving worker: %s", self.worker_name)
         self._varys_client = init_varys(
             self.varys_config_path, self.varys_log_path
         )
-        self.logger.info("Worker listening on %s", self.listen_exchange)
+        self.logger.info(
+            "Worker listening on exchange %s", self.listen_exchange
+        )
         self._runner = PipelineRunner(
             k8_api=init_kubernetes(),
         )
@@ -249,11 +251,6 @@ class Worker:
                             "Non-retryable pipeline error"
                         ) from e
 
-                    self.logger.info(
-                        "Pipeline %s succeeded for sample %s",
-                        pipeline.config.name,
-                        climb_id,
-                    )
                     self._retry_counts.pop(climb_id, None)
                     self.on_success(message, payload)
                 except RuntimeError:
