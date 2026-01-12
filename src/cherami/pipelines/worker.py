@@ -250,7 +250,7 @@ class Worker:
                     self._retry_counts.pop(climb_id, None)
                     self.on_success(message, payload)
                 except RuntimeError:
-                    self.logger.exception(
+                    self.logger.error(
                         "Worker stopping due to pipeline failure"
                     )
                     raise

@@ -171,7 +171,7 @@ class PipelineRunner:
             if status and status.failed:
                 failed_count = status.failed
                 if failed_count > reported_failed_pods:
-                    logger.error(
+                    logger.warning(
                         "k8 job %s pod failed (%d/%d)",
                         job_name,
                         failed_count,
@@ -180,8 +180,10 @@ class PipelineRunner:
                     reported_failed_pods = failed_count
 
                 if failed_count >= pipeline.config.backoff_limit:
-                    logger.error("k8 job %s exhausted backoff limit", job_name)
-                    raise NonRetryablePipelineError(
+                    logger.warning(
+                        "k8 job %s exhausted backoff limit", job_name
+                    )
+                    raise RetryablePipelineError(
                         f"pod_failure: Job {job_name} exhausted backoff limit "
                         f"({pipeline.config.backoff_limit} attempts)"
                     )
