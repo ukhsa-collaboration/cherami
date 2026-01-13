@@ -30,9 +30,7 @@ class AmrPipeline(Pipeline):
                     ],
                 )
                 if not climb_records:
-                    raise ValueError(
-                        f"No records found for climb_id: {climb_id}"
-                    )
+                    raise ValueError("no_records_found")
                 try:
                     row = {
                         "climb_id": climb_id,
@@ -45,11 +43,13 @@ class AmrPipeline(Pipeline):
                         "taxon_reports": climb_records["taxon_reports"],
                     }
                 except KeyError as e:
-                    raise ValueError("Missing expected data") from e
+                    raise ValueError(
+                        f"missing_expected_data: {e.args[0]}"
+                    ) from e
                 rows.append(row)
 
         if not rows:
-            raise ValueError("Samplesheet generation produced no records")
+            raise ValueError("samplesheet_generation_no_records")
 
         fieldnames = list(rows[0].keys())
         with output_filepath.open("w") as f:

@@ -110,37 +110,12 @@ class PipelineRunner:
         trace_file = job_dirs["output_dir"] / "pipeline_trace.txt"
 
         if not trace_file.exists():
-            logger.error(
-                "Pipeline %s for sample %s missing trace file %s",
-                pipeline.config.name,
-                sample_id,
-                trace_file,
-            )
-            logger.info(
-                "Job for %s (%s) failed",
-                sample_id,
-                job_name,
-            )
-            raise NonRetryablePipelineError(
-                f"trace_file_missing: {trace_file}"
-            )
+            raise NonRetryablePipelineError("trace_file_missing")
 
         success = pipeline.evaluate_exit_status(trace_file)
 
         if not success:
-            logger.error(
-                "Pipeline %s for sample %s failed trace evaluation",
-                pipeline.config.name,
-                sample_id,
-            )
-            logger.info(
-                "Job for %s (%s) failed",
-                sample_id,
-                job_name,
-            )
-            raise NonRetryablePipelineError(
-                f"trace_evaluation_failure: Pipeline {pipeline.config.name} processes failed"
-            )
+            raise NonRetryablePipelineError("trace_evaluation_failure")
         return True
 
     def _poll_job(
@@ -181,20 +156,16 @@ class PipelineRunner:
                 failed_count = status.failed
                 if failed_count > reported_failed_pods:
                     logger.warning(
-                        "k8 job %s pod failed (%d/%d)",
-                        job_name,
+                        "k8 pod failed (%d/%d)",
                         failed_count,
                         pipeline.config.backoff_limit,
                     )
                     reported_failed_pods = failed_count
 
                 if failed_count >= pipeline.config.backoff_limit:
-                    logger.warning(
-                        "k8 job %s exhausted backoff limit", job_name
-                    )
                     raise RetryablePipelineError(
-                        f"pod_failure: Job {job_name} exhausted backoff limit "
-                        f"({pipeline.config.backoff_limit} attempts)"
+                        "pod_failure_backoff_limit_exceeded: "
+                        f"backoff_limit={pipeline.config.backoff_limit}"
                     )
 
             if (
@@ -202,13 +173,12 @@ class PipelineRunner:
                 and time.time() - status.start_time.timestamp()
                 > pipeline.config.job_timeout
             ):
-                logger.error("k8 job %s timed out", job_name)
                 raise RetryablePipelineError(
-                    f"pod_failure: Job {job_name} timed out after "
-                    f"{pipeline.config.job_timeout} seconds"
+                    "pod_failure_timeout: "
+                    f"timeout_seconds={pipeline.config.job_timeout}"
                 )
 
-            logger.debug("k8 job %s still running...", job_name)
+            logger.debug("k8 job still running...")
             time.sleep(10)
 
     def _create_job(
@@ -261,11 +231,6 @@ class PipelineRunner:
                 job_dirs=job_dirs,
             )
 
-            logger.info(
-                "Creating job for %s job name: %s",
-                sample_id,
-                job_name,
-            )
             try:
                 self.k8_api.create_namespaced_job(
                     body=job_manifest,
@@ -366,9 +331,7 @@ class PipelineRunner:
         sample_output_dir = worker_output_dir / sample_id
         completion_marker = sample_output_dir / ".cherami_complete"
         if completion_marker.exists():
-            raise NonRetryablePipelineError(
-                f"Output directory already completed for sample {sample_id}"
-            )
+            raise NonRetryablePipelineError("pipeline_already_completed")
         job_dirs = self._create_dirs(
             sample_id, worker_work_dir, worker_output_dir
         )
@@ -402,39 +365,35 @@ class PipelineRunner:
                 )
                 return
 
-            raise RuntimeError("Pipeline execution failed")
+            raise RuntimeError("pipeline_execution_failed")
 
         except OnyxConnectionError as e:
             try:
                 self._cleanup(job_name=job_name, pipeline=pipeline)
             except Exception:
-                logger.exception("Failed to cleanup job %s", job_name)
-            raise RetryablePipelineError(
-                "Onyx connection error running pipeline"
-            ) from e
+                logger.exception("Failed to cleanup job")
+            raise RetryablePipelineError("onyx_connection_error") from e
 
         except ApiException as e:
             try:
                 self._cleanup(job_name=job_name, pipeline=pipeline)
             except Exception:
-                logger.exception("Failed to cleanup job %s", job_name)
-            raise RetryablePipelineError(
-                "Kubernetes API error running pipeline"
-            ) from e
+                logger.exception("Failed to cleanup job")
+            raise RetryablePipelineError("kubernetes_api_error") from e
 
         except (RetryablePipelineError, NonRetryablePipelineError):
             try:
                 self._cleanup(job_name=job_name, pipeline=pipeline)
             except Exception:
-                logger.exception("Failed to cleanup job %s", job_name)
+                logger.exception("Failed to cleanup job")
             raise
 
         except Exception as e:
             try:
                 self._cleanup(job_name=job_name, pipeline=pipeline)
             except Exception:
-                logger.exception("Failed to cleanup job %s", job_name)
-            raise NonRetryablePipelineError("Pipeline execution failed") from e
+                logger.exception("Failed to cleanup job")
+            raise NonRetryablePipelineError(str(e)) from e
 
     def run_pipeline(
         self,

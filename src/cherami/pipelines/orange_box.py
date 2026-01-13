@@ -20,7 +20,7 @@ class OrangeBoxPipeline(Pipeline):
             }
             rows.append(row)
         if not rows:
-            raise ValueError("Samplesheet generation produced no records")
+            raise ValueError("samplesheet_generation_no_records")
 
         fieldnames = list(rows[0].keys())
         with output_filepath.open("w") as f:

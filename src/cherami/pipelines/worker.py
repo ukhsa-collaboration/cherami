@@ -224,7 +224,7 @@ class Worker:
             end_time: Timestamp when execution finished.
 
         Returns:
-            A populated PipelineResult object ready for database insertion.
+            A PipelineResult used for the audit database.
         """
         duration = (
             end_time - start_time
@@ -353,17 +353,28 @@ class Worker:
                                 end_time=end_time,
                             )
                             audit_db.add_record(result)
+                            self.logger.error(
+                                "Pipeline retries exhausted for sample %s job %s pipeline %s (attempt %d/%d): %s",
+                                climb_id,
+                                job_uuid,
+                                pipeline.config.name,
+                                current_attempt,
+                                total_attempts,
+                                error_message,
+                            )
                             raise RuntimeError(
                                 "Pipeline retries exhausted"
                             ) from e
 
                         next_attempt = current_attempt + 1
                         self.logger.warning(
-                            "Retrying pipeline %s for sample %s (next attempt %d/%d)",
+                            "Retrying pipeline %s for sample %s job %s (next attempt %d/%d): %s",
                             pipeline.config.name,
                             climb_id,
+                            job_uuid,
                             next_attempt,
                             total_attempts,
+                            error_message,
                         )
                         result = self._create_result(
                             climb_id=climb_id,
@@ -392,6 +403,15 @@ class Worker:
                             end_time=end_time,
                         )
                         audit_db.add_record(result)
+                        self.logger.error(
+                            "Non-retryable pipeline error for sample %s job %s pipeline %s (attempt %d/%d): %s",
+                            climb_id,
+                            job_uuid,
+                            pipeline.config.name,
+                            current_attempt,
+                            total_attempts,
+                            str(e),
+                        )
                         raise RuntimeError(
                             "Non-retryable pipeline error"
                         ) from e
