@@ -363,6 +363,12 @@ class PipelineRunner:
                 trace validation failure).
         """
         job_name = f"{pipeline.config.name}-{job_uuid}"
+        sample_output_dir = worker_output_dir / sample_id
+        completion_marker = sample_output_dir / ".cherami_complete"
+        if completion_marker.exists():
+            raise NonRetryablePipelineError(
+                f"Output directory already completed for sample {sample_id}"
+            )
         job_dirs = self._create_dirs(
             sample_id, worker_work_dir, worker_output_dir
         )
@@ -388,6 +394,7 @@ class PipelineRunner:
                     job_name=job_name,
                     job_dirs=job_dirs,
                 )
+                completion_marker.write_text(job_uuid)
                 logger.info(
                     "Job for %s (%s) completed successfully",
                     sample_id,
