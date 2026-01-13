@@ -20,19 +20,32 @@ class AmrPipeline(Pipeline):
         rows = []
         with OnyxClient(config) as client:
             for climb_id in samples:
-                climb_records = list(
-                    client.filter(project="synthscape", climb_id=climb_id)
+                climb_records = client.get(
+                    project="synthscape",
+                    climb_id=climb_id,
+                    include=[
+                        "human_filtered_reads_1",
+                        "human_filtered_reads_2",
+                        "taxon_reports",
+                    ],
                 )
-                record = climb_records[0]
-                read1_fastq = record["human_filtered_reads_1"]
-                read_2_fastq = record["human_filtered_reads_2"]
-                taxon_reports = record["taxon_reports"]
-                row = {
-                    "climb_id": climb_id,
-                    "human_filtered_reads_1": read1_fastq,
-                    "human_filtered_reads_2": read_2_fastq,
-                    "taxon_reports": taxon_reports,
-                }
+                if not climb_records:
+                    raise ValueError(
+                        f"No records found for climb_id: {climb_id}"
+                    )
+                try:
+                    row = {
+                        "climb_id": climb_id,
+                        "human_filtered_reads_1": climb_records[
+                            "human_filtered_reads_1"
+                        ],
+                        "human_filtered_reads_2": climb_records[
+                            "human_filtered_reads_2"
+                        ],
+                        "taxon_reports": climb_records["taxon_reports"],
+                    }
+                except KeyError as e:
+                    raise ValueError("Missing expected data") from e
                 rows.append(row)
 
         if not rows:
@@ -55,9 +68,16 @@ def build_worker(
     pipeline_config: PipelineConfig,
     work_dir: Path,
     output_dir: Path,
+    audit_db_path: Path | None = None,
 ) -> Worker:
     pipeline = build_pipeline(pipeline_config)
-    return Worker(worker_config, pipeline, work_dir, output_dir)
+    return Worker(
+        worker_config,
+        pipeline,
+        work_dir,
+        output_dir,
+        audit_db_path=audit_db_path,
+    )
 
 
 def build_pipeline(pipeline_config: PipelineConfig) -> Pipeline:

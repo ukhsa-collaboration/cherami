@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 def serve(click_context: click.Context, config_path: Path) -> None:
     log = click_context.obj["log"]
     log_level = click_context.obj["log_level"]
+    audit_db = click_context.obj["audit_db"]
     init_logging(log, log_level)
     config: CheramiConfig = load_config(config_path)
 
@@ -33,6 +34,7 @@ def serve(click_context: click.Context, config_path: Path) -> None:
         config.pipeline_config,
         worker_work_dir,
         worker_output_dir,
+        audit_db_path=audit_db,
     )
     worker.run()
 

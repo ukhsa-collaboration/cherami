@@ -39,9 +39,16 @@ def build_worker(
     pipeline_config: PipelineConfig,
     work_dir: Path,
     output_dir: Path,
+    audit_db_path: Path | None = None,
 ) -> Worker:
     pipeline = build_pipeline(pipeline_config)
-    return Worker(worker_config, pipeline, work_dir, output_dir)
+    return Worker(
+        worker_config,
+        pipeline,
+        work_dir,
+        output_dir,
+        audit_db_path=audit_db_path,
+    )
 
 
 def build_pipeline(pipeline_config: PipelineConfig) -> Pipeline:

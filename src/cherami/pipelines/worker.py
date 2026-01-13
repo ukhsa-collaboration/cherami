@@ -1,9 +1,11 @@
 import json
 import logging
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cherami.audit_db import AuditDB
 from cherami.config import WorkerConfig
 from cherami.pipeline_runner import (
     NonRetryablePipelineError,
@@ -12,6 +14,22 @@ from cherami.pipeline_runner import (
 )
 from cherami.pipelines import Pipeline
 from cherami.utils import init_kubernetes, init_varys
+
+
+@dataclass
+class PipelineResult:
+    """Result of a pipeline execution attempt, created by Worker for audit logging."""
+
+    climb_id: str
+    job_uuid: str
+    pipeline_name: str
+    status: str
+    error_message: str | None = None
+    attempt: int | None = None
+    max_attempts: int | None = None
+    start_time: float | None = None
+    end_time: float | None = None
+    duration: float | None = None
 
 
 class Worker:
@@ -40,6 +58,7 @@ class Worker:
         pipeline: Pipeline,
         work_dir: Path,
         output_dir: Path,
+        audit_db_path: Path | None = None,
     ) -> None:
         self.config = worker_config
         self.pipeline = pipeline
@@ -60,6 +79,7 @@ class Worker:
         self._retry_counts: dict[str, int] = {}
         self.work_dir = work_dir
         self.output_dir = output_dir
+        self._audit_db = AuditDB(audit_db_path) if audit_db_path else None
 
     def on_skip(self, message: Any) -> None:
         """Handle messages that should be skipped.
@@ -163,7 +183,11 @@ class Worker:
         Raises:
             ValueError: If the message body is invalid JSON or missing required fields.
         """
-        payload = json.loads(message.body)
+
+        try:
+            payload = json.loads(message.body)
+        except json.JSONDecodeError as e:
+            raise ValueError("Invalid JSON in varys message") from e
 
         climb_id = payload.get("climb_id")
         job_uuid = payload.get("match_uuid")
@@ -172,6 +196,54 @@ class Worker:
             raise ValueError("Message missing climb_id or match_uuid")
 
         return payload, climb_id, job_uuid
+
+    def _create_result(
+        self,
+        climb_id: str,
+        job_uuid: str,
+        status: str,
+        error_message: str | None = None,
+        attempt: int | None = None,
+        max_attempts: int | None = None,
+        start_time: float | None = None,
+        end_time: float | None = None,
+    ) -> PipelineResult:
+        """Create a structured result object for audit logging.
+
+        Helper method to instantiate `PipelineResult`, calculating the duration
+        automatically if start and end times are provided.
+
+        Args:
+            climb_id: Sample identifier.
+            job_uuid: Unique job UUID.
+            status: Outcome of the pipeline execution (SUCCESS, FAILED, SKIPPED, RETRY).
+            error_message: Description of the error if failed or retried.
+            attempt: Current attempt number.
+            max_attempts: Total allowed retry attempts.
+            start_time: Timestamp when execution started.
+            end_time: Timestamp when execution finished.
+
+        Returns:
+            A populated PipelineResult object ready for database insertion.
+        """
+        duration = (
+            end_time - start_time
+            ## skipped samples dont have start/end times
+            if start_time is not None and end_time is not None
+            else None
+        )
+        return PipelineResult(
+            climb_id=climb_id,
+            job_uuid=job_uuid,
+            pipeline_name=self.pipeline.config.name,
+            status=status,
+            error_message=error_message,
+            attempt=attempt,
+            max_attempts=max_attempts,
+            start_time=start_time,
+            end_time=end_time,
+            duration=duration,
+        )
 
     def run(self) -> None:
         """Execute the main worker loop.
@@ -194,6 +266,12 @@ class Worker:
         self._runner = PipelineRunner(
             k8_api=init_kubernetes(),
         )
+        audit_db = self._audit_db
+        ## possibly happens if audit db env var is set as empty string
+        if audit_db is None:
+            raise RuntimeError(
+                "Audit database path is required to run a worker"
+            )
         pipeline = self.pipeline
         message = None
         try:
@@ -230,6 +308,12 @@ class Worker:
                             "Criteria not met for sample %s; acknowledging message",
                             climb_id,
                         )
+                        result = self._create_result(
+                            climb_id=climb_id,
+                            job_uuid=job_uuid,
+                            status="SKIPPED",
+                        )
+                        audit_db.add_record(result)
                         self.on_skip(message)
                         continue
 
@@ -244,6 +328,7 @@ class Worker:
                         current_attempt,
                         total_attempts,
                     )
+                    start_time = time.time()
                     try:
                         self._runner.run_pipeline(
                             pipeline=pipeline,
@@ -253,8 +338,21 @@ class Worker:
                             worker_output_dir=self.output_dir,
                         )
                     except RetryablePipelineError as e:
+                        end_time = time.time()
+                        error_message = str(e)
                         if current_attempt >= total_attempts:
                             self._retry_counts.pop(climb_id, None)
+                            result = self._create_result(
+                                climb_id=climb_id,
+                                job_uuid=job_uuid,
+                                status="FAILED",
+                                error_message=error_message,
+                                attempt=current_attempt,
+                                max_attempts=total_attempts,
+                                start_time=start_time,
+                                end_time=end_time,
+                            )
+                            audit_db.add_record(result)
                             raise RuntimeError(
                                 "Pipeline retries exhausted"
                             ) from e
@@ -267,15 +365,52 @@ class Worker:
                             next_attempt,
                             total_attempts,
                         )
+                        result = self._create_result(
+                            climb_id=climb_id,
+                            job_uuid=job_uuid,
+                            status="RETRY",
+                            error_message=error_message,
+                            attempt=current_attempt,
+                            max_attempts=total_attempts,
+                            start_time=start_time,
+                            end_time=end_time,
+                        )
+                        audit_db.add_record(result)
                         self.on_retry(message)
                         continue
                     except NonRetryablePipelineError as e:
+                        end_time = time.time()
                         self._retry_counts.pop(climb_id, None)
+                        result = self._create_result(
+                            climb_id=climb_id,
+                            job_uuid=job_uuid,
+                            status="FAILED",
+                            error_message=str(e),
+                            attempt=current_attempt,
+                            max_attempts=total_attempts,
+                            start_time=start_time,
+                            end_time=end_time,
+                        )
+                        audit_db.add_record(result)
                         raise RuntimeError(
                             "Non-retryable pipeline error"
                         ) from e
 
+                    end_time = time.time()
                     self._retry_counts.pop(climb_id, None)
+                    result = self._create_result(
+                        climb_id=climb_id,
+                        job_uuid=job_uuid,
+                        status="SUCCESS",
+                        attempt=current_attempt,
+                        max_attempts=total_attempts,
+                        start_time=start_time,
+                        end_time=end_time,
+                    )
+                    audit_db.add_record(result)
+                    ## TODO: decide when to actually mark as success - if something fails after the pipeline run but before here,
+                    ## then the sample will be retried even though the pipeline itself succeeded and possibly duplicate analysis tables etc
+                    ## can we have a check we can add to should_run to see if a characterisation pipeline has already run for this sample
                     self.on_success(message, payload)
                 except RuntimeError:
                     self.logger.error(

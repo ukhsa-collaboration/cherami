@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 
 @dataclass(frozen=True)
@@ -28,7 +28,7 @@ class PipelineConfig:
     job_timeout: int
 
     @classmethod
-    def from_dict(cls, raw_config: dict[str, Any]) -> "PipelineConfig":
+    def from_dict(cls, raw_config: dict[str, Any]) -> Self:
         try:
             return cls(
                 name=str(raw_config["name"]),
@@ -68,7 +68,7 @@ class WorkerConfig:
     @classmethod
     def from_dict(
         cls, name: str, raw: dict[str, Any], pipeline_name: str
-    ) -> "WorkerConfig":
+    ) -> Self:
         try:
             return cls(
                 worker_name=name,
@@ -96,7 +96,7 @@ class GlobalConfig:
     output_dir: Path
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "GlobalConfig":
+    def from_dict(cls, raw: dict[str, Any]) -> Self:
         try:
             return cls(
                 work_dir=Path(raw["work_dir"]),

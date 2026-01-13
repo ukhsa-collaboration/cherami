@@ -7,11 +7,11 @@ from cherami import subcommands
 
 @click.group()
 @click.option(
-    "--audit-db",
+    "--audit_db",
     envvar="CHERAMI_AUDIT_DB",
     help="Path to audit SQLite database",
     type=click.Path(dir_okay=False, path_type=Path),
-    default=Path("./sample_audit.db"),
+    required=True,
 )
 @click.option(
     "--log",
@@ -20,7 +20,7 @@ from cherami import subcommands
     default=None,
 )
 @click.option(
-    "--log-level",
+    "--log_level",
     help="Logging level",
     type=click.Choice(
         ["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False

@@ -35,40 +35,6 @@ class PipelineRunner:
     ) -> None:
         self.k8_api = k8_api
 
-    def run_pipeline(
-        self,
-        *,
-        pipeline: Pipeline,
-        sample_id: str,
-        job_uuid: str,
-        worker_work_dir: Path,
-        worker_output_dir: Path,
-    ) -> None:
-        """Launch the given pipeline for a specific sample.
-
-        Workers call this method to initiate processing. It validates the pipeline
-        configuration and wraps the execution logic.
-
-        Args:
-            pipeline: Pipeline instance to run.
-            sample_id: Unique identifier for the sample.
-            job_uuid: Unique UUID for this pipeline run (from match_uuid in payload).
-            worker_work_dir: Directory for intermediate files and Nextflow work.
-            worker_output_dir: Directory for final published outputs.
-
-        Raises:
-            RetryablePipelineError: When a failure is eligible for retry.
-            NonRetryablePipelineError: For non-retryable pipeline failures.
-        """
-        pipeline.validate()
-        self._execute_pipeline(
-            pipeline=pipeline,
-            sample_id=sample_id,
-            job_uuid=job_uuid,
-            worker_work_dir=worker_work_dir,
-            worker_output_dir=worker_output_dir,
-        )
-
     def _cleanup(self, *, job_name: str, pipeline: Pipeline) -> None:
         """Delete a Kubernetes Job and wait for deletion to complete.
 
@@ -96,9 +62,9 @@ class PipelineRunner:
             if e.status != 404:
                 raise
 
-        ## k8 can sometimes take a while to delete jobs, so waits up to 60 for it to delete
+        ## k8 can sometimes take a while to delete jobs, so waits up to 180s for it to delete
         ## otherwise a new job with the same uuid cant be created (will get error 409)
-        deadline = time.time() + 60
+        deadline = time.time() + 180
         while True:
             try:
                 self.k8_api.read_namespaced_job_status(
@@ -111,11 +77,9 @@ class PipelineRunner:
                     return
                 raise
             if time.time() >= deadline:
-                ## TODO: if this happens strong chance that re-running will raise exception 409 - how to handle?
-                logger.warning(
-                    "Timed out waiting for job %s to delete", job_name
+                raise TimeoutError(
+                    f"Timed out waiting for job {job_name} to delete"
                 )
-                return
 
     def _evaluate_trace(
         self,
@@ -163,22 +127,21 @@ class PipelineRunner:
 
         success = pipeline.evaluate_exit_status(trace_file)
 
-        if success:
-            return True
-
-        logger.error(
-            "Pipeline %s for sample %s failed trace evaluation",
-            pipeline.config.name,
-            sample_id,
-        )
-        logger.info(
-            "Job for %s (%s) failed",
-            sample_id,
-            job_name,
-        )
-        raise NonRetryablePipelineError(
-            f"trace_evaluation_failure: Pipeline {pipeline.config.name} processes failed"
-        )
+        if not success:
+            logger.error(
+                "Pipeline %s for sample %s failed trace evaluation",
+                pipeline.config.name,
+                sample_id,
+            )
+            logger.info(
+                "Job for %s (%s) failed",
+                sample_id,
+                job_name,
+            )
+            raise NonRetryablePipelineError(
+                f"trace_evaluation_failure: Pipeline {pipeline.config.name} processes failed"
+            )
+        return True
 
     def _poll_job(
         self,
@@ -465,3 +428,37 @@ class PipelineRunner:
             except Exception:
                 logger.exception("Failed to cleanup job %s", job_name)
             raise NonRetryablePipelineError("Pipeline execution failed") from e
+
+    def run_pipeline(
+        self,
+        *,
+        pipeline: Pipeline,
+        sample_id: str,
+        job_uuid: str,
+        worker_work_dir: Path,
+        worker_output_dir: Path,
+    ) -> None:
+        """Launch the given pipeline for a specific sample.
+
+        Workers call this method to initiate processing. It validates the pipeline
+        configuration and wraps the execution logic.
+
+        Args:
+            pipeline: Pipeline instance to run.
+            sample_id: Unique identifier for the sample.
+            job_uuid: Unique UUID for this pipeline run (from match_uuid in payload).
+            worker_work_dir: Directory for intermediate files and Nextflow work.
+            worker_output_dir: Directory for final published outputs.
+
+        Raises:
+            RetryablePipelineError: When a failure is eligible for retry.
+            NonRetryablePipelineError: For non-retryable pipeline failures.
+        """
+        pipeline.validate()
+        self._execute_pipeline(
+            pipeline=pipeline,
+            sample_id=sample_id,
+            job_uuid=job_uuid,
+            worker_work_dir=worker_work_dir,
+            worker_output_dir=worker_output_dir,
+        )
