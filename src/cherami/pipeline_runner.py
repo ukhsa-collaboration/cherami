@@ -22,10 +22,10 @@ class NonRetryablePipelineError(RuntimeError):
 class PipelineRunner:
     """Run Nextflow pipelines by executing Kubernetes Jobs.
 
-    Workers use this class for pipeline execution. It takes a `BasePipeline`
-    configuration and uses it to create a Kubernetes Job, and waits until the run
-    completes. The worker handles success, retry, or failure states based on
-    exceptions raised from execution.
+    Orchestrates the execution of pipelines by creating and monitoring
+    Kubernetes Jobs. It handles job submission, status polling, and
+    result verification via Nextflow trace files. It also manages the
+    creation of necessary directory structures and samplesheets.
     """
 
     def __init__(
@@ -46,16 +46,15 @@ class PipelineRunner:
     ) -> None:
         """Launch the given pipeline for a specific sample.
 
-        Workers call this method once they have decided a sample should run.
-        It validates the pipeline configuration, and wraps `_execute_pipeline`
-        for actual job orchestration.
+        Workers call this method to initiate processing. It validates the pipeline
+        configuration and wraps the execution logic.
 
         Args:
             pipeline: Pipeline instance to run.
-            sample_id: Sample identifier to run the pipeline for.
-            job_uuid: Unique job UUID for this pipeline run.
-            worker_work_dir: Output directory for intermediate files.
-            worker_output_dir: Output directory for published outputs.
+            sample_id: Unique identifier for the sample.
+            job_uuid: Unique UUID for this pipeline run (from match_uuid in payload).
+            worker_work_dir: Directory for intermediate files and Nextflow work.
+            worker_output_dir: Directory for final published outputs.
 
         Raises:
             RetryablePipelineError: When a failure is eligible for retry.
@@ -82,6 +81,10 @@ class PipelineRunner:
         Args:
             job_name: Name of the Kubernetes Job to delete.
             pipeline: Pipeline instance the job belongs to.
+
+        Raises:
+            ApiException: If the Kubernetes API call fails with a status other
+                than 404.
         """
         try:
             self.k8_api.delete_namespaced_job(
@@ -122,6 +125,24 @@ class PipelineRunner:
         job_name: str,
         job_dirs: dict[str, Path],
     ) -> bool:
+        """Verify pipeline success by examining the Nextflow trace file.
+
+        Checks that the trace file exists in the output directory (extracted from
+        `job_dirs`) and that all processes listed in it exited successfully.
+
+        Args:
+            pipeline: Pipeline instance being evaluated.
+            sample_id: Sample identifier.
+            job_name: Kubernetes Job name (for logging).
+            job_dirs: Dictionary containing run directories, specifically "output_dir".
+
+        Returns:
+            True if the trace file exists and indicates success.
+
+        Raises:
+            NonRetryablePipelineError: If the trace file is missing or if any
+                process in the trace indicates failure.
+        """
         trace_file = job_dirs["output_dir"] / "pipeline_trace.txt"
 
         if not trace_file.exists():
@@ -165,6 +186,22 @@ class PipelineRunner:
         pipeline: Pipeline,
         job_name: str,
     ) -> str:
+        """Monitor the status of a running Kubernetes job.
+
+        Polls the job status every 10 seconds. It checks for successful completion,
+        pod failures (exhausting backoff limits), and timeouts.
+
+        Args:
+            pipeline: Pipeline instance determining timeout and backoff limits.
+            job_name: Name of the Kubernetes Job to monitor.
+
+        Returns:
+            "succeeded" if the job completes successfully.
+
+        Raises:
+            RetryablePipelineError: If the job fails (pods crash repeatedly) or
+                times out.
+        """
         reported_failed_pods = 0
 
         while True:
@@ -220,6 +257,23 @@ class PipelineRunner:
         job_uuid: str,
         job_dirs: dict[str, Path],
     ) -> None:
+        """Create and submit a Kubernetes Job for the pipeline.
+
+        Checks if a job with the same name already exists. If not, it uses
+        `pipeline.create_job_manifest` (passing `job_dirs`) to generate the
+        job spec and submits it.
+
+        Args:
+            pipeline: Pipeline instance to run.
+            job_name: Name for the Kubernetes Job.
+            sample_id: Sample identifier.
+            job_uuid: Unique job UUID.
+            job_dirs: Dictionary containing all required run directories.
+
+        Raises:
+            ApiException: If job creation fails for reasons other than 409 Conflict
+                (which is handled gracefully as an attachment to an existing run).
+        """
         ## to handle situations where a worker crashes with jobs pending, here poll for an existing job with same
         ## name, if this returns something we can assume the job is already running or has completed within the k8
         ## TTL window so can "re-attach" to it and move straight to the validation loop. If the job isnt found, it
@@ -273,6 +327,25 @@ class PipelineRunner:
     def _create_dirs(
         self, sample_id: str, worker_work_dir: Path, worker_output_dir: Path
     ) -> dict[str, Path]:
+        """Create the directory structure required for a pipeline run.
+
+        Sets up the working directory, output directory, Nextflow specific
+        directories, and paths for logs and samplesheets.
+
+        Args:
+            sample_id: Sample identifier.
+            worker_work_dir: Base directory for intermediate work files.
+            worker_output_dir: Base directory for final outputs.
+
+        Returns:
+            A dictionary containing paths for:
+            - working_dir: Sample-specific working directory
+            - output_dir: Sample-specific output directory
+            - nxf_work_dir: Nextflow work directory
+            - nxf_home_dir: Nextflow home directory (shared)
+            - nxf_log_file: Path for the Nextflow log file
+            - samplesheet_path: Path for the generated samplesheet
+        """
         ## creates all the dirs to run a sample
         sample_work_dir = worker_work_dir / sample_id
         sample_output_dir = worker_output_dir / sample_id
@@ -309,23 +382,22 @@ class PipelineRunner:
     ) -> None:
         """Submit the Kubernetes Job and return the result of execution.
 
-        This method generates the samplesheet and job manifest from the pipeline configuration,
-        submits the job to Kubernetes, then enters a loop checking job status every 10
-        seconds. The job can complete in three ways: success (pod exits 0 and trace file passes),
-        failure (e.g. pod exhausted backoff limit), or timeout (exceeded job_timeout). When the pod
-        exits successfully, the method checks the Nextflow trace file to verify all processes
-        exited with allowed codes.
+        Generates configuration, submits the job, and polls for completion.
+        Verifies success by checking both pod exit status and the Nextflow
+        trace file.
 
         Args:
             pipeline: Pipeline instance to run.
-            sample_id: Sample identifier to run the pipeline for.
-            job_uuid: Unique job UUID for this pipeline run.
+            sample_id: Sample identifier.
+            job_uuid: Unique job UUID.
             worker_work_dir: Output directory for intermediate files.
             worker_output_dir: Output directory for published outputs.
 
         Raises:
-            RetryablePipelineError: When a failure is eligible for retry.
-            NonRetryablePipelineError: For non-retryable pipeline failures.
+            RetryablePipelineError: For failures eligible for retry (e.g., API errors,
+                pod crashes, timeouts).
+            NonRetryablePipelineError: For failures not eligible for retry (e.g.,
+                trace validation failure).
         """
         job_name = f"{pipeline.config.name}-{job_uuid}"
         job_dirs = self._create_dirs(
