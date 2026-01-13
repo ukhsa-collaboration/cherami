@@ -15,25 +15,22 @@ from cherami.utils import init_kubernetes, init_varys
 
 
 class Worker:
-    """Defines a base template for all workers, consuming a RabbitMQ queue and launching
-    pipelines.
+    """Defines a base template for all workers.
 
-    The base class implements orchestration methods common to every worker. It
-    binds to the configured exchange and executes pipelines via the
-    `PipelineRunner` module. Subclasses can optionally override `on_skip`,
-    `on_success`, `on_retry`, and `on_sample_failure` to define additional
-    behaviour when these events occur.
+    Consumes messages from a RabbitMQ queue via Varys and launches Nextflow
+    pipelines using Kubernetes Jobs.
 
-    For example, a subclass could override `on_success` to push a payload to another message queue, or
-    override `on_sample_failure` to send an alert to an error message queue.
+    This base class implements the core orchestration logic common to every
+    worker. Subclasses can override event handlers (`on_skip`, `on_success`,
+    `on_retry`, `on_sample_failure`) to define custom behavior.
 
     Attributes:
-        worker_name: Human-readable identifier for the worker
-        listen_exchange: Name of the Varys exchange to listen to for incoming jobs.
-        listen_queue_suffix: Specific queue suffix for the workers job.
-        varys_config_path: File path for the Varys configuration file.
-        varys_log_path: File path for the Varys log file.
-        publish_queue_suffix: Optional suffix for the queue to publish completion messages to.
+        worker_name: Human-readable identifier for the worker.
+        listen_exchange: Varys exchange name for incoming jobs.
+        listen_queue_suffix: Specific queue suffix for incoming jobs.
+        varys_config_path: Path to the Varys configuration file.
+        varys_log_path: Path to the Varys log file.
+        publish_queue_suffix: Optional queue suffix for completion messages.
         publish_exchange: Optional exchange for completion messages.
     """
 
@@ -65,29 +62,35 @@ class Worker:
         self.output_dir = output_dir
 
     def on_skip(self, message: Any) -> None:
-        """Called when a message is to be skipped.
+        """Handle messages that should be skipped.
 
-        Called when `pipeline.should_run(sample_id)` returns `False`, indicating
-        the sample should not be processed. The default implementation
-        acknowledges the message and moves on. Override this if you need
-        custom behavior when skipping samples, such as logging to a separate
+        The default implementation acknowledges the message to remove it from the
         queue.
+
+        Override this method to implement custom logging or side effects for
+        skipped samples, such as writing to a specific "skipped" log or queue.
+
+        Args:
+            message: The Varys message object associated with the current sample.
         """
         self._varys_client.acknowledge_message(message)
 
     def on_success(self, message: Any, payload: dict[str, Any]) -> None:
-        """Called when a pipeline run completes successfully.
+        """Handle successful pipeline completions.
 
-        The default implementation publishes the message to `publish_exchange`/`publish_queue_suffix`
-        (if configured) and then acknowledges the original message. Publishing to another queue allows
-        chaining workers together: one worker's `publish_queue_suffix` becomes the next worker's
-        `listen_queue_suffix`.
+        Publishes the result to a downstream queue if `publish_queue_suffix` is
+        configured, then acknowledges the original message. If `publish_exchange`
+        is not set, it defaults to publishing to the worker's `listen_exchange`.
+        This enables chaining workers where one worker's output queue becomes
+        the next worker's input.
 
-        Override this if you need additional logic on success, e.g. triggering downstream notifications etc
+        Override this method to implement custom post-processing logic, such as
+        sending notifications, updating external databases, or modifying the
+        payload before downstream publication.
 
         Args:
-            message: Varys message representing a sample that completed successfully.
-            payload: Parsed message payload used when republishing downstream.
+            message: The Varys message object associated with the current sample.
+            payload: The message payload to publish downstream.
         """
         ## if a worker configured a publish queue, this  send that message to the listen_exchange,
         ## unless the worker ALSO configures a publish_exchange, in which case use that
@@ -105,20 +108,19 @@ class Worker:
         self,
         message: Any,
     ) -> None:
-        """Called when a pipeline run fails but is eligible for retry.
+        """Handle pipeline failures eligible for retry.
 
-        The default implementation negatively acknowledges (nacks) the message, which returns it to the
-        queue for another attempt. RabbitMQ will redeliver the message, and the worker will process it
-        again later.
+        The default implementation negatively acknowledges (nacks) the message,
+        returning it to the queue for redelivery. The worker tracks retry counts
+        internally and escalates to `on_sample_failure` when `max_retries` is
+        exceeded.
 
-        The worker increments the retry count in `_retry_counts` each time a sample is attempted. Once
-        the count reaches `pipeline.config.max_retries`, the worker calls `on_sample_failure` instead.
-
-        Override this if you need custom retry behavior, such as changing retry behaviour or routing
-        retries to a different queue.
+        Override this method to implement custom retry strategies, such as
+        implementing exponential backoff (if supported by the queue) or logging
+        retry attempts to a monitoring service.
 
         Args:
-            message: Varys message representing a sample that should be retried.
+            message: The Varys message object associated with the current sample.
         """
         self._varys_client.nack_message(message)
 
@@ -126,14 +128,17 @@ class Worker:
         self,
         message: Any,
     ) -> None:
-        """Called when a pipeline run fails and is NOT eligible for retry.
+        """Handle permanent pipeline failures.
 
-        The default implementation is a no-op. Override this if you need to handle failures
-        specially, such as logging to an error queue, sending alerts, or writing to a dead
-        letter queue.
+        Invoked when a sample fails and is not eligible for retry (or has
+        exhausted all retry attempts). This method has no default implementation.
+
+        Override this method to handle terminal failures, such as sending the
+        message to a dead-letter queue, logging a detailed error report, or
+        alerting an administrator.
 
         Args:
-            message: Varys message representing a sample that has failed.
+            message: The Varys message object associated with the current sample.
         """
         ## TODO: consider publishing to an error queue if configured
 
@@ -141,6 +146,23 @@ class Worker:
         self,
         message: Any,
     ) -> tuple[dict[str, Any], str, str]:
+        """Extract sample information from the message.
+
+        Parses the JSON body of the message to retrieve the payload, sample ID
+        (climb_id), and job UUID.
+
+        Args:
+            message: The Varys message object associated with the current sample.
+
+        Returns:
+            A tuple containing:
+            - The full message payload dictionary.
+            - The sample ID (climb_id).
+            - The job UUID (match_uuid).
+
+        Raises:
+            ValueError: If the message body is invalid JSON or missing required fields.
+        """
         payload = json.loads(message.body)
 
         climb_id = payload.get("climb_id")
@@ -152,13 +174,15 @@ class Worker:
         return payload, climb_id, job_uuid
 
     def run(self) -> None:
-        """Main worker loop, consuming messages and launching pipelines as required.
+        """Execute the main worker loop.
 
-        Main entry point for the worker. This is a long-running method that
-        listens for messages on the configured Varys exchange/queue and launches
-        pipelines as required.
+        Connects to Varys and the Kubernetes API, then enters a continuous loop
+        to process incoming messages. It handles the full lifecycle of a sample:
+        reception, validation, execution, and completion handling (success,
+        retry, or failure).
 
-        The loop only exits if the worker raises or the process is terminated.
+        Exceptions during processing are logged and re-raised, causing the
+        worker to exit.
         """
         self.logger.info("Serving worker: %s", self.worker_name)
         self._varys_client = init_varys(
