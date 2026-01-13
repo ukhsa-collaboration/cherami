@@ -1,10 +1,13 @@
-# Config Specification
+# Configuration Specification
 
-Cherami loads all of the required runtime settings from a JSON config file.
+Cherami loads all required runtime settings from a JSON configuration file.
 
-## 1. Config structure
+## 1. Structure
 
-The config has 3 sections: a global block, a single pipeline block, and a single worker block.
+The configuration file consists of three mandatory sections:
+1. `global`: Shared settings.
+2. `pipeline`: Configuration for the characterisation pipeline logic.
+3. `worker`: Configuration for the `Worker` orchestration.
 
 ```json
 {
@@ -16,55 +19,61 @@ The config has 3 sections: a global block, a single pipeline block, and a single
   "worker": { }
 }
 ```
-IMPORTANT:
-- The `global` section defines shared `work_dir` and `output_dir` roots used by the pipeline.
-- Cherami will create `<work_dir>/<pipeline_name>/` and `<output_dir>/<pipeline_name>/` automatically.
-- The pipeline `name` must match a module in `src/cherami/pipelines/`:
-  - `name` uses hyphens (e.g. `orange-box`)
-  - the module filename uses underscores (e.g. `orange_box.py`)
-- Names should NOT contain underscores (`_`) as these are NOT valid kuberentes job names.
 
-## 2. Global fields
+### Important Notes
+- The `global` section defines shared `work_dir` and `output_dir` roots.
+- Cherami automatically creates subdirectories: `<work_dir>/<pipeline_name>/` and `<output_dir>/<pipeline_name>/` and so globals in most cases should be set the same for ALL pipelines.
+- The pipeline `name` determines which Python module is loaded from `src/cherami/pipelines/`:
+  - `name` must be hyphenated (e.g., `orange-box`).
+  - The corresponding module file must be underscored (e.g., `orange_box.py`).
+- Pipeline names must NOT contain underscores (`_`) as they are used to generate Kubernetes Job names, which do not support underscores.
 
-| Field | Required | Description |
-| --- | --- | --- |
-| `work_dir` | Yes | Directory used for all intermediate files. |
-| `output_dir` | Yes | Base directory for published outputs and trace files. |
-
-## 3. Pipeline fields
+## 2. Global Fields
 
 | Field | Required | Description |
 | --- | --- | --- |
-| `name` | Yes | Pipeline name (used for pipeline module loading and Kubernetes job name prefix). |
-| `version` | Yes | The pipeline version. |
-| `path` | Yes | Path to the nextflow pipeline given to `nextflow run`. Should typically be a github repository containing the pipeline. |
-| `cpus`, `mem`, `cpu_limit`, `mem_limit` | Yes | Kubernetes resource limits. |
-| `nf_config_path` | Yes | Path to any extra Nextflow config file (e.g containing k8 executor profiles). |
-| `nf_profiles` | Yes | List of profiles passed to the Nextflow command (e.g `-profile profile1,profile2`). |
-| `nf_extra_args` | Yes | Any additional arguments appended to the Nextflow command. |
-| `namespace` | Yes | Kubernetes namespace for the `Job`. |
-| `container` | Yes | Container used to run Nextflow. |
-| `backoff_limit` | Yes | Maximum failed pod restarts before the job is considered failed. |
-| `max_retries` | Yes | Number of times Cherami will retry a failed run for a given sample. |
-| `retry_timeout` | Yes | How long to wait in seconds between job retries. |
-| `job_timeout` | Yes | Maximum run time in seconds before Cherami treats the job as timed out. |
+| `work_dir` | Yes | Root directory for all intermediate files and working directories. |
+| `output_dir` | Yes | Root directory for final published outputs and trace files. |
 
+## 3. Pipeline Fields
 
-## 4. Worker fields
+These settings configure the `Pipeline` object and the Kubernetes Jobs it spawns.
 
 | Field | Required | Description |
 | --- | --- | --- |
-| `listen_exchange` | Yes | RabbitMQ exchange the worker consumes from. |
-| `listen_queue_suffix` | Yes | Queue suffix for this worker - varys combines this with the exchange name to form the queue name. |
-| `publish_queue_suffix` | Optional | When set, successful runs publish the original message to this queue. The exchange defaults to `listen_exchange` unless `publish_exchange` is also provided. |
-| `publish_exchange` | Optional | Exchange used for completion messages when `publish_queue_suffix` is set. |
-| `varys_config_path` | Yes | Path to the Varys configuration file. |
-| `varys_log_path` | Yes | Path to the Varys log file for this worker. |
+| `name` | Yes | The identifier for the characterisation pipeline. Used for module loading and Kubernetes Job naming. |
+| `version` | Yes | The version string of the pipeline logic. |
+| `path` | Yes | File system path to the Nextflow pipeline project (typically a GitHub repository). |
+| `cpus` | Yes | Kubernetes CPU request for the job. |
+| `mem` | Yes | Kubernetes memory request (e.g., "8G"). |
+| `cpu_limit` | Yes | Kubernetes CPU limit. |
+| `mem_limit` | Yes | Kubernetes memory limit. |
+| `nf_config_path` | Yes | Path to an additional Nextflow config file (e.g., for Kubernetes executor profiles). |
+| `nf_profiles` | Yes | List of Nextflow profiles to apply (e.g., `["docker", "test"]`). |
+| `nf_extra_args` | Yes | List of additional arguments to append to the Nextflow command. |
+| `namespace` | Yes | Kubernetes namespace where the Job will run. |
+| `container` | Yes | Container image used to execute the Nextflow head process. |
+| `backoff_limit` | Yes | Maximum number of pod restarts allowed before the Job is marked as failed. |
+| `max_retries` | Yes | Maximum number of times Cherami will retry a failed sample analysis. |
+| `retry_timeout` | Yes | Wait time (in seconds) between retries. |
+| `job_timeout` | Yes | Maximum execution time (in seconds) before the Job is timed out. |
 
-## 5. Minimal example
+## 4. Worker Fields
 
-This is the minimal shape of a config file. Use `configs/cherami_amr.json` and
-`configs/cherami_orange_box.json` for complete examples.
+These settings configure the `Worker` instance that orchestrates the pipeline.
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `listen_exchange` | Yes | The RabbitMQ exchange the worker listens to. |
+| `listen_queue_suffix` | Yes | Suffix for the queue name. Varys combines this with the exchange name. |
+| `publish_queue_suffix` | Optional | If set, successful runs publish the original message to this queue. |
+| `publish_exchange` | Optional | The exchange used for publishing success messages. Defaults to `listen_exchange` if not set. |
+| `varys_config_path` | Yes | Path to the Varys configuration file (`varys.cfg`). |
+| `varys_log_path` | Yes | Path where the worker's Varys log should be written. |
+
+## 5. Minimal Example
+
+Below is a minimal valid configuration. See `configs/cherami_amr.json` or `configs/cherami_orange_box.json` for production examples.
 
 ```json
 {
@@ -95,7 +104,7 @@ This is the minimal shape of a config file. Use `configs/cherami_amr.json` and
     "listen_queue_suffix": "my_pipeline_queue",
     "publish_queue_suffix": null,
     "publish_exchange": null,
-    "varys_config_path": "./my/varys/config.cfg",
+    "varys_config_path": "./conf/varys.cfg",
     "varys_log_path": "./my_pipeline_varys.log"
   }
 }
