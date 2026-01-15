@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class Pipeline(ABC):
-    """Abstract base class for pipelines.
+    """Base class for pipelines.
 
-    All pipelines must inherit from this. Subclasses accept a `PipelineConfig` and
-    provide a `generate_samplesheet` implementation that prepares their inputs.
+    All pipelines must inherit from this. Implementations must provide a method to
+    generate a samplesheet but can override other methods for custom behavior.
     """
 
     def __init__(self, config: PipelineConfig) -> None:
@@ -23,6 +23,7 @@ class Pipeline(ABC):
     @property
     def proc_names(self) -> dict[str, list[int]]:
         """Optional mapping of Nextflow process names to their allowed exit codes.
+        This should be in the format: `{process_name: [allowed_exit_codes]}`.
 
         Returns:
             Process-specific allowed exit codes used when evaluating trace files. When
@@ -36,7 +37,9 @@ class Pipeline(ABC):
     ) -> None:
         """Creates a samplesheet for the provided sample IDs.
 
-        Implementations should create a samplesheet file for all samples being input into the pipeline.
+        Implementations should create a samplesheet with all input fields required
+        for the nextflow pipeline. Typically this will involve querying Onyx. The
+        samplesheet should be written to `output_filepath`.
 
         Arguments:
             samples: Sample identifiers the pipeline will process.
@@ -45,7 +48,9 @@ class Pipeline(ABC):
         """
 
     def _check_paths(self) -> None:
-        """Log warnings whenever configured filesystem locations are missing."""
+        """Checks for the existence of any file paths that should be present before
+        a pipeline executes.
+        """
         if not self.config.nf_config_path.exists():
             logger.warning(
                 "Configured nf_config_path '%s' does not exist",
@@ -53,7 +58,7 @@ class Pipeline(ABC):
             )
 
     def validate(self) -> None:
-        """Run validation on the pipeline configuration."""
+        """Run validation checks on the pipeline configuration before execution."""
         self._check_paths()
 
     ## inspired by https://github.com/CLIMB-TRE/roz/blob/bd0ec88b29f9fd0fc18ca1cc500ad385128c121a/roz_scripts/mscape/mscape_ingest_validation.py#L997
@@ -73,8 +78,6 @@ class Pipeline(ABC):
             defined exit code, otherwise `False`.
         """
         if not trace_file.exists():
-            ## TODO: do we re-queue the job if trace file not found?
-            ## Decide on wider retry strategy
             return False
 
         try:
@@ -129,6 +132,8 @@ class Pipeline(ABC):
             job_dirs: Dictionary of filesystem paths used by the job.
         Returns:
             List of environment variable dictionaries in a format for the pod spec.
+        Raises:
+            RuntimeError: If any required environment variables are missing.
         """
         required_env_vars = [
             "ONYX_TOKEN",

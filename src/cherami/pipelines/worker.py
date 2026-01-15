@@ -18,7 +18,7 @@ from cherami.utils import init_kubernetes, init_varys
 
 @dataclass
 class PipelineResult:
-    """Result of a pipeline execution attempt, created by Worker for audit logging."""
+    """Result of a pipeline execution attempt"""
 
     climb_id: str
     job_uuid: str
