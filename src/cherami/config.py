@@ -67,26 +67,26 @@ class WorkerConfig:
 
     @classmethod
     def from_dict(
-        cls, name: str, raw: dict[str, Any], pipeline_name: str
+        cls, worker_name: str, raw_config: dict[str, Any], pipeline_name: str
     ) -> Self:
         try:
             return cls(
-                worker_name=name,
+                worker_name=worker_name,
                 pipeline_name=pipeline_name,
-                listen_exchange=str(raw["listen_exchange"]),
-                listen_queue_suffix=str(raw["listen_queue_suffix"]),
-                publish_queue_suffix=str(raw["publish_queue_suffix"])
-                if raw["publish_queue_suffix"] is not None
+                listen_exchange=str(raw_config["listen_exchange"]),
+                listen_queue_suffix=str(raw_config["listen_queue_suffix"]),
+                publish_queue_suffix=str(raw_config["publish_queue_suffix"])
+                if raw_config["publish_queue_suffix"] is not None
                 else None,
-                publish_exchange=str(raw["publish_exchange"])
-                if raw["publish_exchange"] is not None
+                publish_exchange=str(raw_config["publish_exchange"])
+                if raw_config["publish_exchange"] is not None
                 else None,
-                varys_config_path=Path(raw["varys_config_path"]),
-                varys_log_path=Path(raw["varys_log_path"]),
+                varys_config_path=Path(raw_config["varys_config_path"]),
+                varys_log_path=Path(raw_config["varys_log_path"]),
             )
         except KeyError as error:
             raise ValueError(
-                f"Worker '{name}' missing required field: {error.args[0]}"
+                f"Worker '{worker_name}' missing required field: {error.args[0]}"
             ) from error
 
 
@@ -96,11 +96,11 @@ class GlobalConfig:
     output_dir: Path
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> Self:
+    def from_dict(cls, raw_config: dict[str, Any]) -> Self:
         try:
             return cls(
-                work_dir=Path(raw["work_dir"]),
-                output_dir=Path(raw["output_dir"]),
+                work_dir=Path(raw_config["work_dir"]),
+                output_dir=Path(raw_config["output_dir"]),
             )
         except KeyError as error:
             raise ValueError(
