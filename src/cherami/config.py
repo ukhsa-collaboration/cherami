@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 
 @dataclass(frozen=True)
@@ -28,12 +28,10 @@ class PipelineConfig:
     job_timeout: int
 
     @classmethod
-    def from_dict(
-        cls, name: str, raw_config: dict[str, Any]
-    ) -> "PipelineConfig":
+    def from_dict(cls, raw_config: dict[str, Any]) -> Self:
         try:
             return cls(
-                name=name,
+                name=str(raw_config["name"]),
                 version=str(raw_config["version"]),
                 path=str(raw_config["path"]),
                 cpus=int(raw_config["cpus"]),
@@ -52,7 +50,7 @@ class PipelineConfig:
             )
         except KeyError as error:
             raise ValueError(
-                f"Pipeline '{name}' missing required field: {error.args[0]}"
+                f"Pipeline missing required field: {error.args[0]}"
             ) from error
 
 
@@ -68,25 +66,27 @@ class WorkerConfig:
     varys_log_path: Path
 
     @classmethod
-    def from_dict(cls, name: str, raw: dict[str, Any]) -> "WorkerConfig":
+    def from_dict(
+        cls, worker_name: str, raw_config: dict[str, Any], pipeline_name: str
+    ) -> Self:
         try:
             return cls(
-                worker_name=name,
-                pipeline_name=str(raw["pipeline_name"]),
-                listen_exchange=str(raw["listen_exchange"]),
-                listen_queue_suffix=str(raw["listen_queue_suffix"]),
-                publish_queue_suffix=str(raw["publish_queue_suffix"])
-                if raw["publish_queue_suffix"] is not None
+                worker_name=worker_name,
+                pipeline_name=pipeline_name,
+                listen_exchange=str(raw_config["listen_exchange"]),
+                listen_queue_suffix=str(raw_config["listen_queue_suffix"]),
+                publish_queue_suffix=str(raw_config["publish_queue_suffix"])
+                if raw_config["publish_queue_suffix"] is not None
                 else None,
-                publish_exchange=str(raw["publish_exchange"])
-                if raw["publish_exchange"] is not None
+                publish_exchange=str(raw_config["publish_exchange"])
+                if raw_config["publish_exchange"] is not None
                 else None,
-                varys_config_path=Path(raw["varys_config_path"]),
-                varys_log_path=Path(raw["varys_log_path"]),
+                varys_config_path=Path(raw_config["varys_config_path"]),
+                varys_log_path=Path(raw_config["varys_log_path"]),
             )
         except KeyError as error:
             raise ValueError(
-                f"Worker '{name}' missing required field: {error.args[0]}"
+                f"Worker '{worker_name}' missing required field: {error.args[0]}"
             ) from error
 
 
@@ -96,11 +96,11 @@ class GlobalConfig:
     output_dir: Path
 
     @classmethod
-    def from_dict(cls, raw: dict[str, Any]) -> "GlobalConfig":
+    def from_dict(cls, raw_config: dict[str, Any]) -> Self:
         try:
             return cls(
-                work_dir=Path(raw["work_dir"]),
-                output_dir=Path(raw["output_dir"]),
+                work_dir=Path(raw_config["work_dir"]),
+                output_dir=Path(raw_config["output_dir"]),
             )
         except KeyError as error:
             raise ValueError(
@@ -108,31 +108,45 @@ class GlobalConfig:
             ) from error
 
 
-def load_raw_config_file(config_path: Path) -> dict[str, Any]:
+@dataclass(frozen=True)
+class CheramiConfig:
+    global_config: GlobalConfig
+    pipeline_config: PipelineConfig
+    worker_config: WorkerConfig
+
+    def pipeline_dirs(self) -> tuple[Path, Path]:
+        return (
+            self.global_config.work_dir / self.pipeline_config.name,
+            self.global_config.output_dir / self.pipeline_config.name,
+        )
+
+
+def load_config(config_path: Path) -> CheramiConfig:
     with config_path.open("r") as f:
-        return json.load(f)
+        raw_config = json.load(f)
 
-
-def parse_pipeline_config(
-    name: str, raw_config: dict[str, Any]
-) -> PipelineConfig:
-    pipelines = raw_config.get("pipelines") or {}
-    if name not in pipelines:
-        raise ValueError(f"Config missing pipeline '{name}'")
-    raw_pipeline = pipelines[name]
-    return PipelineConfig.from_dict(name, raw_pipeline)
-
-
-def parse_worker_config(name: str, raw_config: dict[str, Any]) -> WorkerConfig:
-    workers = raw_config.get("workers") or {}
-    if name not in workers:
-        raise ValueError(f"Config missing worker '{name}'")
-    raw_worker = workers[name]
-    return WorkerConfig.from_dict(name, raw_worker)
-
-
-def parse_global_config(raw_config: dict[str, Any]) -> GlobalConfig:
     raw_global = raw_config.get("global")
     if raw_global is None:
         raise ValueError("Config missing 'global' section")
-    return GlobalConfig.from_dict(raw_global)
+    global_config = GlobalConfig.from_dict(raw_global)
+
+    raw_pipeline = raw_config.get("pipeline")
+    if raw_pipeline is None:
+        raise ValueError("Config missing 'pipeline' section")
+    pipeline_config = PipelineConfig.from_dict(raw_pipeline)
+    from cherami.pipelines import load_pipeline_module
+
+    load_pipeline_module(pipeline_config.name)
+
+    raw_worker = raw_config.get("worker")
+    if raw_worker is None:
+        raise ValueError("Config missing 'worker' section")
+    worker_config = WorkerConfig.from_dict(
+        pipeline_config.name, raw_worker, pipeline_config.name
+    )
+
+    return CheramiConfig(
+        global_config=global_config,
+        pipeline_config=pipeline_config,
+        worker_config=worker_config,
+    )

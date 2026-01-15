@@ -122,6 +122,44 @@ class Pipeline(ABC):
         """
         return True
 
+    def _get_env_vars(self, job_dirs: dict[str, Path]) -> list[dict[str, str]]:
+        """Gets the environment variables required for the Kubernetes pod.
+
+        Arguments:
+            job_dirs: Dictionary of filesystem paths used by the job.
+        Returns:
+            List of environment variable dictionaries in a format for the pod spec.
+        """
+        required_env_vars = [
+            "ONYX_TOKEN",
+            "ONYX_DOMAIN",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_ENDPOINT_URL",
+            "AWS_REQUEST_CHECKSUM_CALCULATION",
+        ]
+        missing_env_vars = [
+            name for name in required_env_vars if name not in os.environ
+        ]
+        if missing_env_vars:
+            missing_vars_display = ", ".join(missing_env_vars)
+            raise RuntimeError(
+                f"Missing required environment variables: {missing_vars_display}"
+            )
+
+        pod_env_values = [
+            ("NXF_WORK", job_dirs["nxf_work_dir"]),
+            ("NXF_HOME", job_dirs["nxf_home_dir"]),
+            ("NXF_LOG_FILE", job_dirs["nxf_log_file"]),
+        ]
+        pod_env_values.extend(
+            (name, os.environ[name]) for name in required_env_vars
+        )
+        return [
+            {"name": name, "value": str(value)}
+            for name, value in pod_env_values
+        ]
+
     def create_job_manifest(
         self,
         job_id: str,
@@ -145,34 +183,7 @@ class Pipeline(ABC):
         """
         job_name = f"{self.config.name}-{job_id}"
 
-        pod_env_vars = [
-            {"name": "NXF_WORK", "value": str(job_dirs["nxf_work_dir"])},
-            {"name": "NXF_HOME", "value": str(job_dirs["nxf_home_dir"])},
-            {"name": "NXF_LOG_FILE", "value": str(job_dirs["nxf_log_file"])},
-            {"name": "ONYX_TOKEN", "value": str(os.environ.get("ONYX_TOKEN"))},
-            {
-                "name": "ONYX_DOMAIN",
-                "value": str(os.environ.get("ONYX_DOMAIN")),
-            },
-            {
-                "name": "AWS_SECRET_ACCESS_KEY",
-                "value": str(os.environ.get("AWS_SECRET_ACCESS_KEY")),
-            },
-            {
-                "name": "AWS_ACCESS_KEY_ID",
-                "value": str(os.environ.get("AWS_ACCESS_KEY_ID")),
-            },
-            {
-                "name": "AWS_ENDPOINT_URL",
-                "value": str(os.environ.get("AWS_ENDPOINT_URL")),
-            },
-            {
-                "name": "AWS_REQUEST_CHECKSUM_CALCULATION",
-                "value": str(
-                    os.environ.get("AWS_REQUEST_CHECKSUM_CALCULATION")
-                ),
-            },
-        ]
+        pod_env_vars = self._get_env_vars(job_dirs)
 
         nextflow_cmd = ["nextflow"]
         nextflow_cmd.extend(["run", str(self.config.path)])

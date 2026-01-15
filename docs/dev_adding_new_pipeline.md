@@ -1,205 +1,200 @@
-# Adding a new pipeline
+# Adding a new characterisation pipeline
 
-This document describes how to add a new pipeline to cherami.
+This guide details the end-to-end process of adding a new characterisation pipeline to Cherami. This involves creating a configuration file, implementing a `Pipeline` class, and determining the appropriate `Worker` strategy.
 
 ## 1. Overview
 
-- A `Pipeline` is a class that wraps all of the configuration required to run a Nextflow pipeline via Kubernetes.
-- Pipeline behaviour is defined by:
-  - A config entry under `"pipelines"`.
-  - A Python subclass of `Pipeline`.
-- The `Pipeline` class defines how to:
-  - Generate a samplesheet for a given sample.
-  - Create a Kubernetes `Job` manifest for the Nextflow run.
-  - Evaluate the Nextflow trace file.
-- Therefore each nextflow pipeline that will be run via cherami should have a `Pipeline` class implemented for it.
-- Cherami reads pipeline settings from the provided config file to construct a `PipelineConfig` object which becomes a component of the `Pipeline` class.
-- A `Pipeline` is standalone to a `Worker`. A `Worker` has a `Pipeline` associated with it - but are seperate ideas. Broadly a `Pipeline` handles its own configuration, when to run, how to evaluate it was successful etc. Whereas a `Worker` handles the message queue orchestration and actual execution in that context.
-  - As these are seperate concepts it is possible to run a given pipeline without a worker using the `cherami run` subcommand - which can be useful for debugging.
+Cherami manages characterisation pipelines using two key components:
 
-## 2. Add the pipeline to the config file
+1. **`Pipeline`**: Defines the logic and compute criteria for a specific workflow (e.g., AMR, Orange Box).
+   - Generates the input samplesheet for Nextflow.
+   - Implements decision logic to skip ineligible samples.
+   - Validates execution success via a trace file produced by nextflow.
 
-Any config with the expected structure can be used via the `--config` CLI option or `CHERAMI_CONFIG` environment variable, allowing for different configurations for different environments (i.e synthscape vs mSCAPE). The repo contains configration (`./configs`) for common runtime environments already - therefore it is likely a new pipeline should be added to one of these.
+2. **`Worker`**: Manages orchestration.
+   - Listens to RabbitMQ/Varys queues for messages from upstream pipelines.
+   - Invokes `Pipeline` objects to execute jobs.
+   - Handles the lifecycle of a sample via events e.g success, retries, skipping, and downstream publishing.
 
-Pipelines are configured under the top-level `"pipelines"` key in the config.
+A single JSON configuration file specifies most of the config options, defining resources, container settings, exchange names etc. This configuration file is used to run a worker listening to the configured exchange via `cherami serve <config>`
 
-1. Open the appropriate config file for the environment you will be using (for example `configs/cherami_synthscape.json`).
-2. Under `"pipelines"`, add a new object for the name of the pipeline you are adding (for example `"my-pipeline"`).
-3. Populate all required fields:
+## 2. Configuration
 
-IMPORTANT:
-- Pipeline names should NOT contain underscores (`_`) as these are NOT valid kuberentes job names.
+Create a new configuration file in `configs/` (e.g., `configs/cherami_my_pipeline.json`). Use existing configs like `configs/cherami_amr.json` as a templates.
+
+### Naming Conventions
+* **Pipeline Name**: Must be hyphenated (e.g., `my-pipeline`) because it is used to generate Kubernetes job names which can NOT contain underscores.
+* **Module Name**: Can be underscored (e.g., `my_pipeline.py`).
+
+### Minimal Structure
 
 ```json
 {
-  "pipelines": {
-    "my-pipeline": {
-      "version": "0.1.0",
-      "path": "/path/to/nextflow/project",
-      "cpus": 4,
-      "mem": "8G",
-      "cpu_limit": 4,
-      "mem_limit": "8G",
-      "nf_config_path": "/path/to/nextflow.config",
-      "nf_profiles": ["docker"],
-      "nf_extra_args": [],
-      "namespace": "k8s-namespace",
-      "container": "quay.io/path/to/image",
-      "backoff_limit": 5,
-      "max_retries": 1,
-      "retry_timeout": 10,
-      "job_timeout": 3600
-    }
+  "global": {
+    "work_dir": "/shared/team/projects/downstream_orchestration/work",
+    "output_dir": "/shared/team/projects/downstream_orchestration/output"
+  },
+  "pipeline": {
+    "name": "my-pipeline",
+    "version": "0.1.0",
+    "path": "/shared/team/projects/downstream_orchestration/my-pipeline-repo",
+    "cpus": 4,
+    "mem": "8G",
+    "cpu_limit": 4,
+    "mem_limit": "8G",
+    "nf_config_path": "/shared/team/projects/downstream_orchestration/my-pipeline-repo/nextflow.config",
+    "nf_profiles": [],
+    "nf_extra_args": [],
+    "namespace": "ns-synthscape-ukhsa",
+    "container": "quay.io/climb-tre/nextflow",
+    "backoff_limit": 5,
+    "max_retries": 1,
+    "retry_timeout": 10,
+    "job_timeout": 3600
+  },
+  "worker": {
+    "listen_exchange": "cherami_test",
+    "listen_queue_suffix": "my_pipeline_queue",
+    "publish_queue_suffix": null,
+    "publish_exchange": null,
+    "varys_config_path": "./conf/varys.cfg",
+    "varys_log_path": "./my_pipeline_varys.log"
   }
 }
 ```
 
-Expected fields are as follows:
+*See `docs/dev_config.md` for more detailed field documentation.*
 
-| Field | Description |
-| --- | --- |
-| `version` | The pipeline version. |
-| `path` | Path to the nextflow pipeline given to `nextflow run`. Should typically be a github repository containing the pipeline. |
-| `cpus`, `mem`, `cpu_limit`, `mem_limit` | Kubernetes resource limits. |
-| `nf_config_path` | Path to any extra Nextflow config file (e.g containing k8 executor profiles). |
-| `nf_profiles` | List of profiles passed to the nextflow command (e.g `-profile profile1,profile2`). |
-| `nf_extra_args` | Any additional arguments appended to the Nextflow command. |
-| `namespace` | Kubernetes namespace for the `Job`. |
-| `container` | Container used to run Nextflow. |
-| `backoff_limit` | Maximum failed pod restarts before the job is considered failed. |
-| `max_retries` | Number of times Cherami will retry a failed run for a given sample. |
-| `retry_timeout` | How long to wait in seconds between job retries. |
-| `job_timeout` | Maximum run time in seconds before Cherami treats the job as timed out. |
+## 3. Pipeline implementation
 
+Create your characterisation pipeline module in `src/cherami/pipelines/` (e.g., `src/cherami/pipelines/my_pipeline.py`).
 
-## 3. Implement the Pipeline subclass
+Your module must export:
+1. A `Pipeline` subclass.
+2. A `build_pipeline` factory function.
+3. A `build_worker` factory function.
 
-Pipelines are implemented in `src/cherami/pipelines`. Each pipeline is a subclass of `Pipeline`.
-
-1. Create a new file `src/cherami/pipelines/my_pipeline.py`.
-2. Implement a `Pipeline` subclass that at minimum defines `generate_samplesheet`.
-3. Optionally override `should_run`, `proc_names`, and `validate`.
-
-### 3.1. Basic structure
+### Example Implementation
 
 ```python
 from pathlib import Path
+import csv
 
+from cherami.config import PipelineConfig, WorkerConfig
 from cherami.pipelines.pipeline import Pipeline
+from cherami.pipelines.worker import Worker
 
 
 class MyPipeline(Pipeline):
-    def generate_samplesheet(self, samples: list[str], job_id: str, output_filepath: Path) -> None:
-        ## Look up any metadata you need in onyx
-        ## Write a samplesheet file to the provided filepath
-        ...
+    def generate_samplesheet(
+        self, samples: list[str], job_id: str, output_filepath: Path
+    ) -> None:
+        ## For example here make a basic samplesheet
+        ## An actual implementation would probably query onyx for relevant fields/data
+        ## As a matter of convention try and avoid importing pandas for this (as to not add a dependency)
+        rows = []
+        for sample_id in samples:
+            rows.append({
+                "sample_id": sample_id,
+                "fastq_1": f"/data/{sample_id}_R1.fastq.gz",
+                "fastq_2": f"/data/{sample_id}_R2.fastq.gz"
+            })
+
+        with output_filepath.open("w") as f:
+            writer = csv.DictWriter(f, fieldnames=["sample_id", "fastq_1", "fastq_2"])
+            writer.writeheader()
+            writer.writerows(rows)
+
+
+def build_pipeline(pipeline_config: PipelineConfig) -> Pipeline:
+    return MyPipeline(pipeline_config)
+
+
+def build_worker(
+    worker_config: WorkerConfig,
+    pipeline_config: PipelineConfig,
+    work_dir: Path,
+    output_dir: Path,
+) -> Worker:
+    ## this uses the default worker implementation - which is fine if you dont need any custom behaviour (see below section)
+    pipeline = build_pipeline(pipeline_config)
+    return Worker(worker_config, pipeline, work_dir, output_dir)
 ```
 
-IMPORTANT:
+**Notes:**
+- `samples`: Currently a single-item list, but designed to support batching in future.
+- `job_id`: This is derived from the message payload (`match_uuid`); used for Kubernetes job naming.
+- **Samplesheet**: The format must exactly match what your Nextflow pipeline expects.
 
-- `samples` currently should only ever be a list of one sample ID (`[sample_id]`), but accepts a list for future batching.
-- `job_id` is the UUID for this run obtained via the message payload and is used to name the Kubernetes job and generated samplesheets (work and output directories always use `climb_id`).
-- The samplesheet format is pipeline-specific. It must match what your Nextflow pipeline expects.
-- If your pipeline needs metadata from Onyx, follow the example used by `AmrPipeline` in `src/cherami/pipelines/amr.py`.
-  - However, cherami does not require Onyx. Any method of constructing a valid samplesheet is acceptable as long as `generate_samplesheet` returns the correct path.
+## 4. Pipeline Logic & Customisation
 
-### 3.3. Optional: should_run
+The `Pipeline` class implements a function to define the decision logic of the characterisation pipeline.
 
-The default implementation of `Pipeline.should_run(sample_id)` always returns `True`. This means that by default, the pipeline will run for every sample.
-
-Override this method to add decision logic, for example to check Onyx fields pass thresholds before launching a job
+### 4.1. Decision logic (`should_run`)
+Override `should_run(sample_id)` to filter samples before they run. This allows you to say things like "only run the strep pipeline if a sample has > 10 strep reads" for example.
 
 ```python
-    def should_run(self, sample_id: str) -> bool:
-        ## Return False to skip running the pipeline for this sample_id
-        return True
+def should_run(self, sample_id: str) -> bool:
+    ## return false to skip a pipeline, true to run it.
+    return check_read_count(sample_id) > 10
 ```
 
-IMPORTANT:
-- When `should_run` returns `False`:
-  - cherami will skip the pipeline for that sample.
-  - Workers will call their `on_skip` handler instead of launching a job.
+If `False`, the worker calls `on_skip()` and acknowledges the message immediately removing it from the message queue.
 
-### 3.4. Optional: proc_names
-
-The default implementation of `Pipeline.evaluate_exit_status` requires that every process in the Nextflow trace file exits with code `0`.
-
-Override the `proc_names` property to:
-
-- Allow specific non-zero exit codes for particular processes.
-- Limit evaluation to a subset of processes.
+### 4.2. Nextflow process validation (`proc_names`)
+You can define valid exit codes for specific Nextflow processes. By default, all processes must exit with `0`.
 
 ```python
-    @property
-    def proc_names(self) -> dict[str, list[int]]:
-        return {
-          ## allow a process to exit 5 without failing the validation check
-            "PROCESS_NAME_IN_TRACE": [0, 5],
-        }
+@property
+def proc_names(self) -> dict[str, list[int]]:
+    return {
+        "fastqc": [0],
+        "other_process": [0, 1]  ## this will allow an exit code of 1 (fail) for this process if needed for any reason
+    }
 ```
 
-The keys in this mapping must match the `name` column in the Nextflow trace file.
+### 4.3. Other checks before pipeline executes (`validate`)
+Override `validate()` to perform setup checks (e.g., verifying external files exist) before execution starts.
 
-### 3.5. Optional: validate
+## 5. Worker implementation
 
-The default implementation of `validate` method only checks that configured filesystem locations exist.
+### Standard Worker
+The default `Worker` class (`src/cherami/pipelines/worker.py`) is sufficient for most use cases. It:
+1. Listens to the configured exchange.
+2. Launches the pipeline.
+3. On success: Optionally republishes to a downstream queue (if `publish_queue_suffix` is set).
+4. On failure: Retries up to `max_retries` before giving up.
 
-Override `validate` if your pipeline needs additional checks before runs start, for example:
+### Custom Worker
+You can however, extend the base `Worker` if you need custom orchestration logic:
+- **Custom Payloads**: Processing messages that don't fit `climb_id`/`match_uuid`.
+- **Additional exchanges**: Publishing to a success or fail queue.
+- **Error handling**: Dead-letter queues, alerting systems, or custom retry backoffs.
 
-- Confirm that any required environment variables are set.
-- Check that external configuration files or database connections exist.
+To do this, subclass `Worker` and override the relevant hooks:
+- `on_skip(message)`
+- `on_success(message, payload)`
+- `on_retry(message)`
+- `on_sample_failure(message)`
 
-```python
-    def validate(self) -> None:
-        super().validate()
-        ## add any pipeline-specific validation here
-```
+Return your new subclass from `build_worker` in your pipeline module.
 
-## 4. Register the pipeline
+## 6. Running and Verifying
 
-Cherami looks up pipelines by name using the `PIPELINES` mapping defined in `src/cherami/pipelines/__init__.py`.
+Use the CLI to verify your configuration and logic.
 
-1. Open `src/cherami/pipelines/__init__.py`.
-2. Import your new pipeline class.
-3. Add it to the `PIPELINES` dictionary with the same key used in your config.
-
-Example:
-
-```python
-from cherami.pipelines.amr import AmrPipeline
-from cherami.pipelines.orange_box import OrangeBoxPipeline
-from cherami.pipelines.my_pipeline import MyPipeline
-from cherami.pipelines.pipeline import Pipeline  # noqa: F401
-
-PIPELINES: dict[str, type[Pipeline]] = {
-    "amr": AmrPipeline,
-    "orange-box": OrangeBoxPipeline,
-    "my-pipeline": MyPipeline,
-}
-```
-IMPORTANT:
-- `"my-pipeline"` must match the pipeline name in the config file (for example the key under `"pipelines"`).
-- Pipeline names should NOT contain underscores (`_`) as these are NOT valid kuberentes job names.
-
-## 6. Running and testing the pipeline
-
-Once the config and Python class are in place and registered:
-
-1. Ensure the config file contains the new pipeline entry with the correct name.
-2. Ensure that the pipeline name does not contain an underscore (`_`)
-3. Write tests for any overridden behaviour.
-
-There are some useful debug commands that can help testing new pipelines.
-
-To check if a sample will pass any custom decision logic defined in the `should_run` method, you can use `cherami evaluate`:
-
+**Start the worker:**
 ```bash
-CHERAMI_CONFIG=path/to/config.json 
-uv run cherami evaluate SAMPLE_ID --pipelines my-pipeline
+uv run cherami serve path/to/config.json
 ```
-You can also run the pipeline directly for a sample without the need for a worker:
 
+**Inspect queues:**
 ```bash
-CHERAMI_CONFIG=path/to/config.json 
-uv run cherami run SAMPLE_ID --pipelines my-pipeline
+uv run cherami describe path/to/config.json
+```
+
+**Dry-run decision logic:**
+Evaluates `should_run()` for specific samples without spawning full jobs.
+```bash
+uv run cherami evaluate path/to/config.json SAMPLE_1 SAMPLE_2
 ```

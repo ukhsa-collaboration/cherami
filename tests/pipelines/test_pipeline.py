@@ -19,28 +19,28 @@ class DummyPipeline(Pipeline):
     def proc_names(self) -> dict[str, list[int]]:
         return self._proc_names
 
-    def generate_samplesheet(self, samples, job_id, destination):
+    def generate_samplesheet(self, samples, job_id, output_filepath):
         return
 
 
 @pytest.fixture
 def pipeline_config():
     return PipelineConfig(
-        name="test",
-        version="0.1.0",
-        path="gpha/nf-pipeline",
-        cpus=1,
+        name="test-pipeline",
+        version="1.0.0",
+        path="main.nf",
+        cpus=2,
         mem="4G",
-        cpu_limit=1,
-        mem_limit="4G",
-        nf_config_path=Path("/configs/dummy.config"),
-        nf_profiles=["test"],
-        nf_extra_args=[],
-        namespace="cherami",
-        container="idont:exist",
-        backoff_limit=5,
-        max_retries=1,
-        retry_timeout=10,
+        cpu_limit=4,
+        mem_limit="8G",
+        nf_config_path=Path("/idont/exist/nf.config"),
+        nf_profiles=["docker", "test"],
+        nf_extra_args=["--blah"],
+        namespace="imafake-ns",
+        container="nextflow/nextflow:latest",
+        backoff_limit=3,
+        max_retries=2,
+        retry_timeout=300,
         job_timeout=3600,
     )
 

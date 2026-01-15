@@ -2,7 +2,9 @@ import csv
 import logging
 from pathlib import Path
 
+from cherami.config import PipelineConfig, WorkerConfig
 from cherami.pipelines.pipeline import Pipeline
+from cherami.pipelines.worker import Worker
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +20,7 @@ class OrangeBoxPipeline(Pipeline):
             }
             rows.append(row)
         if not rows:
-            raise ValueError("Samplesheet generation produced no records")
+            raise ValueError("samplesheet_generation_no_records")
 
         fieldnames = list(rows[0].keys())
         with output_filepath.open("w") as f:
@@ -30,3 +32,24 @@ class OrangeBoxPipeline(Pipeline):
             "Generated orange_box samplesheet at %s",
             output_filepath,
         )
+
+
+def build_worker(
+    worker_config: WorkerConfig,
+    pipeline_config: PipelineConfig,
+    work_dir: Path,
+    output_dir: Path,
+    audit_db_path: Path | None = None,
+) -> Worker:
+    pipeline = build_pipeline(pipeline_config)
+    return Worker(
+        worker_config,
+        pipeline,
+        work_dir,
+        output_dir,
+        audit_db_path=audit_db_path,
+    )
+
+
+def build_pipeline(pipeline_config: PipelineConfig) -> Pipeline:
+    return OrangeBoxPipeline(pipeline_config)
