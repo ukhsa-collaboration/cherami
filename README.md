@@ -9,23 +9,24 @@ cherami is the mSCAPE orchestration module for pathogen pipelines, designed to r
 
 Read [this](docs/dev_nextflow_pipeline_requirements.md) first.
 
-## I have a nextflow pipeline that I want to use in cherami now
+## I have a nextflow pipeline already developed that I want to add to cherami
 
 Read [this](docs/dev_adding_new_pipeline.md) and then [this](docs/dev_k8_deployment_of_cherami.md).
 
 ## Installation
 
-### Container (recommended)
-- Pull the published image from GHCR:
+### Containers
+- Containers are built for each tagged release, and pulished to GHCR:
   ```
-  docker pull ghcr.io/ukhsa-collaboration/cherami:main
+  docker pull ghcr.io/ukhsa-collaboration/cherami:latest
   ```
-- For pre-release testing, use:
+- Containers are also built off of the dev branch for testing purposes
   ```
-  docker pull ghcr.io/ukhsa-collaboration/cherami:pre-release
+  docker pull ghcr.io/ukhsa-collaboration/cherami:dev
   ```
 
 ### Local
+- Alternatively you can install into a local environment
   ```
   pip install git+https://github.com/ukhsa-collaboration/cherami.git
   ```
@@ -45,7 +46,6 @@ Global options:
 ```
 --log <PATH> - log file path; logs to stderr when omitted
 --log-level <DEBUG|INFO|WARNING|ERROR> - default INFO
---audit-db <PATH> - audit SQLite database (default ./sample_audit.db)
 ```
 ## Sub-commands
 
@@ -58,7 +58,7 @@ cherami serve <config>
 
 ## Configuration
 
-cherami requires a JSON configuration file passed as a positional argument to commands like `serve` and `describe`. This file configures the pipeline and worker pair for execution. Examples are provided in the `configs` folder.
+cherami requires a JSON configuration file passed as a positional argument to `serve`. This file configures the pipeline and worker for execution. Examples are provided in the `configs` folder.
 
 Further documentation for the config file can be found [here](docs/dev_config.md).
 
