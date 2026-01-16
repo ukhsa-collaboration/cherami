@@ -35,34 +35,46 @@ def init_logging(log_path: Path | None, log_level: str) -> None:
     logger.addHandler(handler)
 
 
-def init_varys(config_path: Path, log_path: Path) -> Varys:
+def init_varys(config_path: Path, log_path: Path, profile: str) -> Varys:
     """Initialise a Varys client for RabbitMQ.
 
-    Creates a Varys instance configured to use the "cherami" profile from the config file.
-    Auto-acknowledgment is disabled so workers can manually control when messages are acked
-    or nacked based on pipeline results.
+    Returns a Varys client configured to use the requested profile from the config file.
+    Auto-acknowledgment is disabled so callers must explicitly ack or nack messages based
+    on pipeline results.
 
     Args:
         config_path: Path to Varys config containing RabbitMQ credentials and connection details.
-        log_path: Path where Varys should write its debug logs.
+        log_path: Path where Varys should write its logs.
+        profile: Varys profile name to use from the config file.
 
     Returns:
-        Configured Varys client ready to send and receive messages.
+        Configured Varys client ready to send and receive RMQ messages.
+
+    Raises:
+        RuntimeError: If the Varys client cannot be initialised.
     """
-    return Varys(
-        profile="cherami",
-        logfile=str(log_path),
-        log_level="DEBUG",
-        config_path=str(config_path),
-        auto_acknowledge=False,
-    )
+    try:
+        return Varys(
+            profile=profile,
+            logfile=str(log_path),
+            log_level="DEBUG",
+            config_path=str(config_path),
+            auto_acknowledge=False,
+        )
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialise Varys client: {e}") from e
 
 
 def init_kubernetes() -> BatchV1Api:
     """Initialise a Kubernetes client.
 
+    Returns an authorised k8 client
+
     Returns:
         Configured k8 client for creating and managing Kubernetes Jobs.
+
+    Raises:
+        RuntimeError: If the Kubernetes client cannot be initialised.
     """
     try:
         c = Configuration()
@@ -87,11 +99,15 @@ def init_kubernetes() -> BatchV1Api:
 def init_onyx() -> OnyxConfig:
     """Initialise Onyx configuration from environment variables.
 
-    Reads ONYX_DOMAIN and ONYX_TOKEN from the environment to create an Onyx config object.
-    Pipelines use this to query sample metadata and file paths when generating samplesheets.
+    Returns an OnyxConfig built from required environment variables ONYX_DOMAIN and
+    ONYX_TOKEN.
 
     Returns:
         Configured OnyxConfig ready to create an OnyxClient.
+
+    Raises:
+        ValueError: If required environment variables are missing.
+        RuntimeError: If the Onyx configuration cannot be initialised.
     """
     try:
         return OnyxConfig(

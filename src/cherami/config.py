@@ -1,3 +1,4 @@
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,6 +7,8 @@ from typing import Any, Self
 
 @dataclass(frozen=True)
 class PipelineConfig:
+    """Configuration for a pipeline."""
+
     ## general
     name: str
     version: str
@@ -29,6 +32,11 @@ class PipelineConfig:
 
     @classmethod
     def from_dict(cls, raw_config: dict[str, Any]) -> Self:
+        """Returns a PipelineConfig parsed from a raw config dictionary.
+
+        Raises:
+            ValueError: If a required field is missing.
+        """
         try:
             return cls(
                 name=str(raw_config["name"]),
@@ -56,23 +64,31 @@ class PipelineConfig:
 
 @dataclass(frozen=True)
 class WorkerConfig:
-    worker_name: str
-    pipeline_name: str
+    """Configuration for a worker."""
+
     listen_exchange: str
     listen_queue_suffix: str
     publish_queue_suffix: str | None
     publish_exchange: str | None
     varys_config_path: Path
     varys_log_path: Path
+    config_path: Path
+    config_hash: str
 
     @classmethod
     def from_dict(
-        cls, worker_name: str, raw_config: dict[str, Any], pipeline_name: str
+        cls,
+        raw_config: dict[str, Any],
+        config_path: Path,
+        config_hash: str,
     ) -> Self:
+        """Returns a WorkerConfig parsed from a raw config dictionary.
+
+        Raises:
+            ValueError: If a required field is missing.
+        """
         try:
             return cls(
-                worker_name=worker_name,
-                pipeline_name=pipeline_name,
                 listen_exchange=str(raw_config["listen_exchange"]),
                 listen_queue_suffix=str(raw_config["listen_queue_suffix"]),
                 publish_queue_suffix=str(raw_config["publish_queue_suffix"])
@@ -83,20 +99,29 @@ class WorkerConfig:
                 else None,
                 varys_config_path=Path(raw_config["varys_config_path"]),
                 varys_log_path=Path(raw_config["varys_log_path"]),
+                config_path=config_path,
+                config_hash=config_hash,
             )
         except KeyError as error:
             raise ValueError(
-                f"Worker '{worker_name}' missing required field: {error.args[0]}"
+                f"Worker config missing required field: {error.args[0]}"
             ) from error
 
 
 @dataclass(frozen=True)
 class GlobalConfig:
+    """Configuration for global settings."""
+
     work_dir: Path
     output_dir: Path
 
     @classmethod
     def from_dict(cls, raw_config: dict[str, Any]) -> Self:
+        """Returns a GlobalConfig parsed from a raw config dictionary.
+
+        Raises:
+            ValueError: If a required field is missing.
+        """
         try:
             return cls(
                 work_dir=Path(raw_config["work_dir"]),
@@ -110,11 +135,14 @@ class GlobalConfig:
 
 @dataclass(frozen=True)
 class CheramiConfig:
+    """Top-level configuration storing all config sections."""
+
     global_config: GlobalConfig
     pipeline_config: PipelineConfig
     worker_config: WorkerConfig
 
     def pipeline_dirs(self) -> tuple[Path, Path]:
+        """Returns pipeline-specific (e.g work_dir/output_dir) paths."""
         return (
             self.global_config.work_dir / self.pipeline_config.name,
             self.global_config.output_dir / self.pipeline_config.name,
@@ -122,8 +150,17 @@ class CheramiConfig:
 
 
 def load_config(config_path: Path) -> CheramiConfig:
+    """Returns a CheramiConfig loaded from a JSON config file.
+
+    Raises:
+        OSError: If the config file cannot be read.
+        json.JSONDecodeError: If the config file is not valid JSON.
+        ValueError: If required config sections or fields are missing.
+        Exception: If the pipeline module cannot be loaded.
+    """
     with config_path.open("r") as f:
         raw_config = json.load(f)
+    start_hash = hash_from_raw(raw_config)
 
     raw_global = raw_config.get("global")
     if raw_global is None:
@@ -142,7 +179,9 @@ def load_config(config_path: Path) -> CheramiConfig:
     if raw_worker is None:
         raise ValueError("Config missing 'worker' section")
     worker_config = WorkerConfig.from_dict(
-        pipeline_config.name, raw_worker, pipeline_config.name
+        raw_worker,
+        config_path,
+        start_hash,
     )
 
     return CheramiConfig(
@@ -150,3 +189,29 @@ def load_config(config_path: Path) -> CheramiConfig:
         pipeline_config=pipeline_config,
         worker_config=worker_config,
     )
+
+
+def hash_from_file(config_path: Path) -> str:
+    """Returns a SHA-256 hash of a config file's JSON content.
+
+    Utility function to hash directly from a file path.
+
+    Raises:
+        OSError: If the config file cannot be read.
+        json.JSONDecodeError: If the config file is not valid JSON.
+    """
+    with config_path.open("r") as f:
+        raw_config = json.load(f)
+    return hash_from_raw(raw_config)
+
+
+def hash_from_raw(raw_config: dict[str, Any]) -> str:
+    """Returns a SHA-256 hash of a JSON content of a config.
+
+    Used to ignore whitespace etc when hashing.
+    """
+    payload = json.dumps(
+        raw_config,
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()

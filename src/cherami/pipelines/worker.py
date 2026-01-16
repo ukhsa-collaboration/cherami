@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from cherami.audit_db import AuditDB
-from cherami.config import WorkerConfig
+from cherami.config import WorkerConfig, hash_from_file
 from cherami.pipeline_runner import (
     NonRetryablePipelineError,
     PipelineRunner,
@@ -15,10 +15,12 @@ from cherami.pipeline_runner import (
 from cherami.pipelines import Pipeline
 from cherami.utils import init_kubernetes, init_varys
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class PipelineResult:
-    """Result of a pipeline execution attempt"""
+    """Result of a pipeline execution attempt."""
 
     climb_id: str
     job_uuid: str
@@ -33,7 +35,7 @@ class PipelineResult:
 
 
 class Worker:
-    """Defines a base template for all workers.
+    """Base worker for running pipelines.
 
     Consumes messages from a RabbitMQ queue via Varys and launches Nextflow
     pipelines using Kubernetes Jobs.
@@ -43,13 +45,22 @@ class Worker:
     `on_retry`, `on_sample_failure`) to define custom behavior.
 
     Attributes:
-        worker_name: Human-readable identifier for the worker.
+        config: Worker config object.
+        pipeline: Pipeline object that the worker will run.
+        _runner: Pipeline runner object.
+        _varys_client: Varys client.
+        _retry_counts: Map of retry attempts by climb ID.
+        work_dir: Working directory for pipeline execution.
+        output_dir: Output directory for pipeline results.
+        _audit_db: Audit database object logging pipeline events.
         listen_exchange: Varys exchange name for incoming jobs.
-        listen_queue_suffix: Specific queue suffix for incoming jobs.
+        listen_queue_suffix: Queue suffix for incoming jobs used by varys for queue names.
         varys_config_path: Path to the Varys configuration file.
         varys_log_path: Path to the Varys log file.
         publish_queue_suffix: Optional queue suffix for completion messages.
         publish_exchange: Optional exchange for completion messages.
+        _config_path: Path to the worker configuration file.
+        _startup_config_hash: Hash of the configuration at startup.
     """
 
     def __init__(
@@ -58,11 +69,16 @@ class Worker:
         pipeline: Pipeline,
         work_dir: Path,
         output_dir: Path,
-        audit_db_path: Path | None = None,
+        audit_db_path: Path,
     ) -> None:
-        self.config = worker_config
-        self.pipeline = pipeline
-        self.worker_name: str = worker_config.worker_name
+        self.config: WorkerConfig = worker_config
+        self.pipeline: Pipeline = pipeline
+        self._runner: PipelineRunner
+        self._varys_client: Any
+        self._retry_counts: dict[str, int] = {}
+        self.work_dir: Path = work_dir
+        self.output_dir: Path = output_dir
+        self._audit_db: AuditDB = AuditDB(audit_db_path)
         self.listen_exchange: str = worker_config.listen_exchange
         self.listen_queue_suffix: str = worker_config.listen_queue_suffix
         self.varys_config_path: Path = worker_config.varys_config_path
@@ -71,15 +87,8 @@ class Worker:
             worker_config.publish_queue_suffix
         )
         self.publish_exchange: str | None = worker_config.publish_exchange
-        self._varys_client: Any
-        self._runner: PipelineRunner
-        self.logger = logging.getLogger(
-            f"cherami.pipelines.{worker_config.worker_name}"
-        )
-        self._retry_counts: dict[str, int] = {}
-        self.work_dir = work_dir
-        self.output_dir = output_dir
-        self._audit_db = AuditDB(audit_db_path) if audit_db_path else None
+        self._config_path: Path = worker_config.config_path
+        self._startup_config_hash: str = worker_config.config_hash
 
     def on_skip(self, message: Any) -> None:
         """Handle messages that should be skipped.
@@ -87,11 +96,13 @@ class Worker:
         The default implementation acknowledges the message to remove it from the
         queue.
 
-        Override this method to implement custom logging or side effects for
-        skipped samples, such as writing to a specific "skipped" log or queue.
+        Override this method to implement custom logic for skipped samples.
 
         Args:
             message: The Varys message object associated with the current sample.
+
+        Raises:
+            Exception: If the Varys client fails to acknowledge the message.
         """
         self._varys_client.acknowledge_message(message)
 
@@ -104,13 +115,14 @@ class Worker:
         This enables chaining workers where one worker's output queue becomes
         the next worker's input.
 
-        Override this method to implement custom post-processing logic, such as
-        sending notifications, updating external databases, or modifying the
-        payload before downstream publication.
+        Override this method to implement custom post-processing logic.
 
         Args:
             message: The Varys message object associated with the current sample.
             payload: The message payload to publish downstream.
+
+        Raises:
+            Exception: If the Varys client fails to publish or acknowledge the message.
         """
         ## if a worker configured a publish queue, this  send that message to the listen_exchange,
         ## unless the worker ALSO configures a publish_exchange, in which case use that
@@ -132,15 +144,16 @@ class Worker:
 
         The default implementation negatively acknowledges (nacks) the message,
         returning it to the queue for redelivery. The worker tracks retry counts
-        internally and escalates to `on_sample_failure` when `max_retries` is
+        internally and calls to `on_sample_failure` if `max_retries` is
         exceeded.
 
-        Override this method to implement custom retry strategies, such as
-        implementing exponential backoff (if supported by the queue) or logging
-        retry attempts to a monitoring service.
+        Override this method to implement custom retry strategies.
 
         Args:
             message: The Varys message object associated with the current sample.
+
+        Raises:
+            Exception: If the Varys client fails to requeue the message.
         """
         self._varys_client.nack_message(message)
 
@@ -168,8 +181,7 @@ class Worker:
     ) -> tuple[dict[str, Any], str, str]:
         """Extract sample information from the message.
 
-        Parses the JSON body of the message to retrieve the payload, sample ID
-        (climb_id), and job UUID.
+        Returns the message payload, sample ID (climb_id), and job UUID (match_uuid).
 
         Args:
             message: The Varys message object associated with the current sample.
@@ -210,8 +222,8 @@ class Worker:
     ) -> PipelineResult:
         """Create a structured result object for audit logging.
 
-        Helper method to instantiate `PipelineResult`, calculating the duration
-        automatically if start and end times are provided.
+        Returns a PipelineResult suitable for audit logging. Duration is populated
+        only when both start and end timestamps are provided.
 
         Args:
             climb_id: Sample identifier.
@@ -248,30 +260,24 @@ class Worker:
     def run(self) -> None:
         """Execute the main worker loop.
 
-        Connects to Varys and the Kubernetes API, then enters a continuous loop
-        to process incoming messages. It handles the full lifecycle of a sample:
-        reception, validation, execution, and completion handling (success,
-        retry, or failure).
+        Runs the worker until it exits.
 
-        Exceptions during processing are logged and re-raised, causing the
-        worker to exit.
+        Raises:
+            RuntimeError: If the worker exits due to a pipeline error or client initialisation failure.
+            ValueError: If an incoming message cannot be parsed.
+            Exception: If an unexpected error occurs and the worker exits.
         """
-        self.logger.info("Serving worker: %s", self.worker_name)
+        logger.info("Serving worker: %s", self.pipeline.config.name)
         self._varys_client = init_varys(
-            self.varys_config_path, self.varys_log_path
+            self.varys_config_path,
+            self.varys_log_path,
+            "cherami",
         )
-        self.logger.info(
-            "Worker listening on exchange %s", self.listen_exchange
-        )
+        logger.info("Worker listening on exchange %s", self.listen_exchange)
         self._runner = PipelineRunner(
             k8_api=init_kubernetes(),
         )
         audit_db = self._audit_db
-        ## possibly happens if audit db env var is set as empty string
-        if audit_db is None:
-            raise RuntimeError(
-                "Audit database path is required to run a worker"
-            )
         pipeline = self.pipeline
         message = None
         try:
@@ -297,14 +303,14 @@ class Worker:
                         continue
 
                     payload, climb_id, job_uuid = self._parse_message(message)
-                    self.logger.info(
+                    logger.info(
                         "Received message climb id: %s uuid: %s",
                         climb_id,
                         job_uuid,
                     )
 
                     if not pipeline.should_run(climb_id):
-                        self.logger.info(
+                        logger.info(
                             "Criteria not met for sample %s; acknowledging message",
                             climb_id,
                         )
@@ -317,12 +323,18 @@ class Worker:
                         self.on_skip(message)
                         continue
 
+                    current_config_hash = hash_from_file(self._config_path)
+                    if current_config_hash != self._startup_config_hash:
+                        logger.warning(
+                            "Config file has changed since startup. Please restart the worker to apply changes.",
+                        )
+
                     max_retries = pipeline.config.max_retries
                     total_attempts = max_retries + 1
                     current_attempt = self._retry_counts.get(climb_id, 0) + 1
                     self._retry_counts[climb_id] = current_attempt
 
-                    self.logger.info(
+                    logger.info(
                         "Worker running sample %s (attempt %d/%d)",
                         climb_id,
                         current_attempt,
@@ -353,7 +365,7 @@ class Worker:
                                 end_time=end_time,
                             )
                             audit_db.add_record(result)
-                            self.logger.error(
+                            logger.error(
                                 "Pipeline retries exhausted for sample %s job %s pipeline %s (attempt %d/%d): %s",
                                 climb_id,
                                 job_uuid,
@@ -367,7 +379,7 @@ class Worker:
                             ) from e
 
                         next_attempt = current_attempt + 1
-                        self.logger.warning(
+                        logger.warning(
                             "Retrying pipeline %s for sample %s job %s (next attempt %d/%d): %s",
                             pipeline.config.name,
                             climb_id,
@@ -403,7 +415,7 @@ class Worker:
                             end_time=end_time,
                         )
                         audit_db.add_record(result)
-                        self.logger.error(
+                        logger.error(
                             "Non-retryable pipeline error for sample %s job %s pipeline %s (attempt %d/%d): %s",
                             climb_id,
                             job_uuid,
@@ -433,15 +445,13 @@ class Worker:
                     ## can we have a check we can add to should_run to see if a characterisation pipeline has already run for this sample
                     self.on_success(message, payload)
                 except RuntimeError:
-                    self.logger.error(
-                        "Worker stopping due to pipeline failure"
-                    )
+                    logger.error("Worker stopping due to pipeline failure")
                     raise
                 except Exception as e:
-                    self.logger.exception(
+                    logger.exception(
                         "Unhandled exception in worker: %s", str(e)
                     )
                     raise
         finally:
-            self.logger.info("%s worker stopping", self.worker_name)
+            logger.info("%s worker stopping", self.pipeline.config.name)
             self._varys_client.close()

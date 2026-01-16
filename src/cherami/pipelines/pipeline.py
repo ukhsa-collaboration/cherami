@@ -13,8 +13,7 @@ logger = logging.getLogger(__name__)
 class Pipeline(ABC):
     """Base class for pipelines.
 
-    All pipelines must inherit from this. Implementations must provide a method to
-    generate a samplesheet but can override other methods for custom behavior.
+    Subclasses must implement `generate_samplesheet` and may override other methods.
     """
 
     def __init__(self, config: PipelineConfig) -> None:
@@ -23,7 +22,6 @@ class Pipeline(ABC):
     @property
     def proc_names(self) -> dict[str, list[int]]:
         """Optional mapping of Nextflow process names to their allowed exit codes.
-        This should be in the format: `{process_name: [allowed_exit_codes]}`.
 
         Returns:
             Process-specific allowed exit codes used when evaluating trace files. When
@@ -35,7 +33,7 @@ class Pipeline(ABC):
     def generate_samplesheet(
         self, samples: list[str], job_id: str, output_filepath: Path
     ) -> None:
-        """Creates a samplesheet for the provided sample IDs.
+        """Writes a samplesheet for the provided sample IDs to `output_filepath`.
 
         Implementations should create a samplesheet with all input fields required
         for the nextflow pipeline. Typically this will involve querying Onyx. The
@@ -45,12 +43,13 @@ class Pipeline(ABC):
             samples: Sample identifiers the pipeline will process.
             job_id: Identifier associated with the orchestrated job.
             output_filepath: Location where the samplesheet should be written.
+
+        Raises:
+            OSError: If the samplesheet fails to write.
         """
 
     def _check_paths(self) -> None:
-        """Checks for the existence of any file paths that should be present before
-        a pipeline executes.
-        """
+        """Logs warnings for missing configured paths."""
         if not self.config.nf_config_path.exists():
             logger.warning(
                 "Configured nf_config_path '%s' does not exist",
@@ -63,12 +62,9 @@ class Pipeline(ABC):
 
     ## inspired by https://github.com/CLIMB-TRE/roz/blob/bd0ec88b29f9fd0fc18ca1cc500ad385128c121a/roz_scripts/mscape/mscape_ingest_validation.py#L997
     def evaluate_exit_status(self, trace_file: Path) -> bool:
-        """Ensures processes recorded in a Nextflow trace file all exited with allowed
-        codes.
+        """Returns True when the Nextflow trace indicates allowed process exits.
 
-        This uses the `proc_names` property to determine which processes to check and their
-        allowed exit codes. If `proc_names` is empty, all processes must have exited with
-        code 0.
+        When `self.proc_names` is empty, all processes must exit with code 0.
 
         Arguments:
             trace_file: Path to the tab-delimited Nextflow trace file for a job run.
@@ -76,6 +72,10 @@ class Pipeline(ABC):
         Returns:
             `True` if the trace file exists and every relevant process satisfies its
             defined exit code, otherwise `False`.
+
+        Raises:
+            KeyError: If the trace file is missing required columns.
+            ValueError: If an exit code cannot be parsed.
         """
         if not trace_file.exists():
             return False
@@ -113,8 +113,8 @@ class Pipeline(ABC):
     def should_run(self, sample_id: str) -> bool:
         """Determine whether the pipeline should run for the given sample.
 
-        The default implementation always returns True. Override this to implement decision logic based
-        on sample metadata. For example, query onyx to check if the sample has sufficient read count.
+        The default implementation always returns True. Override this to implement
+        decision logic based on sample metadata.
         When this returns False, the worker calls `on_skip()` instead of launching the pipeline.
 
         Arguments:
@@ -126,7 +126,7 @@ class Pipeline(ABC):
         return True
 
     def _get_env_vars(self, job_dirs: dict[str, Path]) -> list[dict[str, str]]:
-        """Gets the environment variables required for the Kubernetes pod.
+        """Returns environment variables required for the Kubernetes pod spec.
 
         Arguments:
             job_dirs: Dictionary of filesystem paths used by the job.
@@ -134,6 +134,7 @@ class Pipeline(ABC):
             List of environment variable dictionaries in a format for the pod spec.
         Raises:
             RuntimeError: If any required environment variables are missing.
+            KeyError: If required paths are missing from `job_dirs`.
         """
         required_env_vars = [
             "ONYX_TOKEN",
@@ -168,15 +169,9 @@ class Pipeline(ABC):
     def create_job_manifest(
         self,
         job_id: str,
-        climb_id: str,
         job_dirs: dict[str, Path],
     ) -> dict[str, Any]:
-        """Creates the Kubernetes Job manifest for a pipeline run.
-
-        This method constructs a complete Kubernetes Job spec using the pipeline config. The manifest
-        includes volume mounts, environment variables (Onyx credentials, AWS config), resource limits,
-        and the Nextflow command assembled from config fields. The job runs a single pod. Kubernetes
-        will restart the pod up to backoff_limit times if it fails.
+        """Returns the Kubernetes Job manifest for a pipeline run.
 
         Arguments:
             job_id: UUID associated with the sample.
@@ -185,6 +180,10 @@ class Pipeline(ABC):
 
         Returns:
             Kubernetes Job manifest dictionary to submit via `create_namespaced_job`.
+
+        Raises:
+            RuntimeError: If required environment variables are missing.
+            KeyError: If required paths are missing from `job_dirs`.
         """
         job_name = f"{self.config.name}-{job_id}"
 

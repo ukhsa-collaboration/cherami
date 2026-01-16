@@ -86,11 +86,11 @@ def test_pipeline_config_fail(valid_pipeline):
 
 def test_worker_config_success(valid_worker):
     config = WorkerConfig.from_dict(
-        "test-worker", valid_worker, "test-pipeline"
+        valid_worker,
+        Path("/idont/exist/config.json"),
+        "hash",
     )
 
-    assert config.worker_name == "test-worker"
-    assert config.pipeline_name == "test-pipeline"
     assert config.listen_exchange == "cherami-exchange"
     assert config.publish_queue_suffix == "publish"
     assert config.varys_config_path == Path("/idont/exist/varys.json")
@@ -100,7 +100,9 @@ def test_worker_config_allow_none_optionals(valid_worker):
     valid_worker["publish_queue_suffix"] = None
     valid_worker["publish_exchange"] = None
     config = WorkerConfig.from_dict(
-        "test-worker", valid_worker, "test-pipeline"
+        valid_worker,
+        Path("/idont/exist/config.json"),
+        "hash",
     )
 
     assert config.publish_queue_suffix is None
@@ -110,9 +112,13 @@ def test_worker_config_allow_none_optionals(valid_worker):
 def test_worker_config_fail(valid_worker):
     del valid_worker["listen_exchange"]
     with pytest.raises(
-        ValueError, match="Worker 'test-worker' missing required field"
+        ValueError, match="Worker config missing required field"
     ):
-        WorkerConfig.from_dict("test-worker", valid_worker, "test-pipeline")
+        WorkerConfig.from_dict(
+            valid_worker,
+            Path("/idont/exist/config.json"),
+            "hash",
+        )
 
 
 def test_cherami_config_pipeline_dirs(
@@ -121,7 +127,9 @@ def test_cherami_config_pipeline_dirs(
     global_conf = GlobalConfig.from_dict(valid_global)
     pipeline_conf = PipelineConfig.from_dict(valid_pipeline)
     worker_conf = WorkerConfig.from_dict(
-        "test-worker", valid_worker, pipeline_conf.name
+        valid_worker,
+        Path("/idont/exist/config.json"),
+        "hash",
     )
     cherami_conf = CheramiConfig(global_conf, pipeline_conf, worker_conf)
     work_dir, out_dir = cherami_conf.pipeline_dirs()

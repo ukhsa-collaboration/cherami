@@ -59,7 +59,6 @@ def test_create_job_manifest(pipeline, pipeline_config, job_dirs, monkeypatch):
     monkeypatch.setenv("AWS_REQUEST_CHECKSUM_CALCULATION", "when_required")
     manifest = pipeline.create_job_manifest(
         job_id="JOB123",
-        climb_id="C123ABC",
         job_dirs=job_dirs,
     )
     container = manifest["spec"]["template"]["spec"]["containers"][0]
@@ -96,6 +95,5 @@ def test_create_job_manifest_missing_env_vars(pipeline, job_dirs, monkeypatch):
     ):
         pipeline.create_job_manifest(
             job_id="JOB123",
-            climb_id="C123ABC",
             job_dirs=job_dirs,
         )

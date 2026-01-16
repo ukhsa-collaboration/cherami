@@ -68,7 +68,7 @@ def build_worker(
     pipeline_config: PipelineConfig,
     work_dir: Path,
     output_dir: Path,
-    audit_db_path: Path | None = None,
+    audit_db_path: Path,
 ) -> Worker:
     pipeline = build_pipeline(pipeline_config)
     return Worker(

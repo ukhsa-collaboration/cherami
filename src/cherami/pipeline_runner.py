@@ -20,12 +20,12 @@ class NonRetryablePipelineError(RuntimeError):
 
 
 class PipelineRunner:
-    """Run Nextflow pipelines by executing Kubernetes Jobs.
+    """Runs Nextflow pipelines as Kubernetes Jobs.
 
-    Orchestrates the execution of pipelines by creating and monitoring
-    Kubernetes Jobs. It handles job submission, status polling, and
-    result verification via Nextflow trace files. It also manages the
-    creation of necessary directory structures and samplesheets.
+    Classifies pipelines as either succeeding or failing based on
+    a Nextflow pipelines trace file. Failures are raised as exceptions,
+    classified as either retryable or non-retryable. The caller should
+    handle the retry logic accordingly.
     """
 
     def __init__(
@@ -38,11 +38,10 @@ class PipelineRunner:
     def _cleanup(self, *, job_name: str, pipeline: Pipeline) -> None:
         """Delete a Kubernetes Job and wait for deletion to complete.
 
-        Kubernetes job deletion is asynchronous, so this method polls for up to 60 seconds
+        Kubernetes job deletion is asynchronous, so this method polls for up to 180 seconds
         until the job returns a 404 status, indicating it has been removed. This wait
         is necessary because attempting to create a new job with the same name before deletion
-        completes will result in a 409 error. If deletion times out, subsequent retry
-        attempts for the same sample may fail with name collisions.
+        completes will result in a 409 error.
 
         Args:
             job_name: Name of the Kubernetes Job to delete.
@@ -51,6 +50,7 @@ class PipelineRunner:
         Raises:
             ApiException: If the Kubernetes API call fails with a status other
                 than 404.
+            TimeoutError: If the job still exists after the timeout.
         """
         try:
             self.k8_api.delete_namespaced_job(
@@ -85,19 +85,14 @@ class PipelineRunner:
         self,
         *,
         pipeline: Pipeline,
-        sample_id: str,
-        job_name: str,
         job_dirs: dict[str, Path],
     ) -> bool:
         """Verify pipeline success by examining the Nextflow trace file.
 
-        Checks that the trace file exists in the output directory (extracted from
-        `job_dirs`) and that all processes listed in it exited successfully.
+        Returns True if the Nextflow trace file exists and indicates success.
 
         Args:
             pipeline: Pipeline instance being evaluated.
-            sample_id: Sample identifier.
-            job_name: Kubernetes Job name (for logging).
             job_dirs: Dictionary containing run directories, specifically "output_dir".
 
         Returns:
@@ -106,6 +101,7 @@ class PipelineRunner:
         Raises:
             NonRetryablePipelineError: If the trace file is missing or if any
                 process in the trace indicates failure.
+            KeyError: If directory missing from `job_dirs`.
         """
         trace_file = job_dirs["output_dir"] / "pipeline_trace.txt"
 
@@ -123,20 +119,21 @@ class PipelineRunner:
         *,
         pipeline: Pipeline,
         job_name: str,
-    ) -> str:
+    ) -> bool:
         """Monitor the status of a running Kubernetes job.
 
-        Polls the job status every 10 seconds. It checks for successful completion,
-        pod failures (exhausting backoff limits), and timeouts.
+        Returns True when the job completes successfully. Otherwise,
+        raises exceptions for failures or timeouts.
 
         Args:
             pipeline: Pipeline instance determining timeout and backoff limits.
             job_name: Name of the Kubernetes Job to monitor.
 
         Returns:
-            "succeeded" if the job completes successfully.
+            True if the job completes successfully.
 
         Raises:
+            ApiException: If the Kubernetes API call fails.
             RetryablePipelineError: If the job fails (pods crash repeatedly) or
                 times out.
         """
@@ -150,7 +147,7 @@ class PipelineRunner:
             status = resp.status  # type: ignore
 
             if status and status.succeeded:
-                return "succeeded"
+                return True
 
             if status and status.failed:
                 failed_count = status.failed
@@ -192,9 +189,8 @@ class PipelineRunner:
     ) -> None:
         """Create and submit a Kubernetes Job for the pipeline.
 
-        Checks if a job with the same name already exists. If not, it uses
-        `pipeline.create_job_manifest` (passing `job_dirs`) to generate the
-        job spec and submits it.
+        Will "attach" to an existing job if one with the same name is found. Otherwise,
+        creates a new job.
 
         Args:
             pipeline: Pipeline instance to run.
@@ -204,8 +200,8 @@ class PipelineRunner:
             job_dirs: Dictionary containing all required run directories.
 
         Raises:
-            ApiException: If job creation fails for reasons other than 409 Conflict
-                (which is handled gracefully as an attachment to an existing run).
+            ApiException: If Kubernetes API calls fail for reasons other than 409
+                Conflict (which is treated as an existing run).
         """
         ## to handle situations where a worker crashes with jobs pending, here poll for an existing job with same
         ## name, if this returns something we can assume the job is already running or has completed within the k8
@@ -227,7 +223,6 @@ class PipelineRunner:
 
             job_manifest = pipeline.create_job_manifest(
                 job_id=job_uuid,
-                climb_id=sample_id,
                 job_dirs=job_dirs,
             )
 
@@ -257,8 +252,7 @@ class PipelineRunner:
     ) -> dict[str, Path]:
         """Create the directory structure required for a pipeline run.
 
-        Sets up the working directory, output directory, Nextflow specific
-        directories, and paths for logs and samplesheets.
+        Returns a dictionary of paths required for a pipeline run.
 
         Args:
             sample_id: Sample identifier.
@@ -273,6 +267,9 @@ class PipelineRunner:
             - nxf_home_dir: Nextflow home directory (shared)
             - nxf_log_file: Path for the Nextflow log file
             - samplesheet_path: Path for the generated samplesheet
+
+        Raises:
+            OSError: If required directories cannot be created.
         """
         ## creates all the dirs to run a sample
         sample_work_dir = worker_work_dir / sample_id
@@ -310,9 +307,8 @@ class PipelineRunner:
     ) -> None:
         """Submit the Kubernetes Job and return the result of execution.
 
-        Generates configuration, submits the job, and polls for completion.
-        Verifies success by checking both pod exit status and the Nextflow
-        trace file.
+        Runs the pipeline execution for a sample and raises on failure. On
+        success, writes a completion marker to the sample output directory.
 
         Args:
             pipeline: Pipeline instance to run.
@@ -345,16 +341,14 @@ class PipelineRunner:
                 job_dirs=job_dirs,
             )
 
-            status = self._poll_job(
+            complete = self._poll_job(
                 pipeline=pipeline,
                 job_name=job_name,
             )
 
-            if status == "succeeded":
+            if complete:
                 self._evaluate_trace(
                     pipeline=pipeline,
-                    sample_id=sample_id,
-                    job_name=job_name,
                     job_dirs=job_dirs,
                 )
                 completion_marker.write_text(job_uuid)
@@ -406,8 +400,8 @@ class PipelineRunner:
     ) -> None:
         """Launch the given pipeline for a specific sample.
 
-        Workers call this method to initiate processing. It validates the pipeline
-        configuration and wraps the execution logic.
+        Runs the given pipeline for a specific sample. This validates the pipeline
+        configuration and executes the run.
 
         Args:
             pipeline: Pipeline instance to run.

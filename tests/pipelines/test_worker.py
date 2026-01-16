@@ -11,14 +11,14 @@ from cherami.pipelines.worker import Worker
 @pytest.fixture
 def mock_worker_config():
     return WorkerConfig(
-        worker_name="test-worker",
-        pipeline_name="test-pipeline",
         listen_exchange="test-exchange",
         listen_queue_suffix="queue",
         publish_queue_suffix="test",
         publish_exchange="out-exchange",
         varys_config_path=Path("/idont/exist/varys.conf"),
         varys_log_path=Path("/idont/exist/varys.log"),
+        config_path=Path("/idont/exist/config.json"),
+        config_hash="hash",
     )
 
 
@@ -37,7 +37,7 @@ def worker(mock_worker_config, mock_pipeline, tmp_path):
         pipeline=mock_pipeline,
         work_dir=tmp_path / "work",
         output_dir=tmp_path / "output",
-        audit_db_path=None,
+        audit_db_path=tmp_path / "audit.db",
     )
 
 
