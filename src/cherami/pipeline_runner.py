@@ -1,3 +1,4 @@
+import datetime
 import logging
 import time
 from pathlib import Path
@@ -161,8 +162,7 @@ class PipelineRunner:
 
                 if failed_count >= pipeline.config.backoff_limit:
                     raise RetryablePipelineError(
-                        "pod_failure_backoff_limit_exceeded: "
-                        f"backoff_limit={pipeline.config.backoff_limit}"
+                        f"pod_failure_backoff_limit_exceeded: backoff_limit={pipeline.config.backoff_limit}"
                     )
 
             if (
@@ -171,8 +171,7 @@ class PipelineRunner:
                 > pipeline.config.job_timeout
             ):
                 raise RetryablePipelineError(
-                    "pod_failure_timeout: "
-                    f"timeout_seconds={pipeline.config.job_timeout}"
+                    f"pod_failure_timeout: timeout_seconds={pipeline.config.job_timeout}"
                 )
 
             logger.debug("k8 job still running...")
@@ -248,7 +247,11 @@ class PipelineRunner:
             )
 
     def _create_dirs(
-        self, sample_id: str, worker_work_dir: Path, worker_output_dir: Path
+        self,
+        sample_id: str,
+        worker_work_dir: Path,
+        worker_output_dir: Path,
+        execution_timestamp: datetime.datetime,
     ) -> dict[str, Path]:
         """Create the directory structure required for a pipeline run.
 
@@ -258,6 +261,7 @@ class PipelineRunner:
             sample_id: Sample identifier.
             worker_work_dir: Base directory for intermediate work files.
             worker_output_dir: Base directory for final outputs.
+            execution_timestamp: start time of execution - used to make output dirs.
 
         Returns:
             A dictionary containing paths for:
@@ -272,8 +276,11 @@ class PipelineRunner:
             OSError: If required directories cannot be created.
         """
         ## creates all the dirs to run a sample
-        sample_work_dir = worker_work_dir / sample_id
-        sample_output_dir = worker_output_dir / sample_id
+        execution_timestamp_str = execution_timestamp.isoformat("T")
+        sample_work_dir = worker_work_dir / sample_id / execution_timestamp_str
+        sample_output_dir = (
+            worker_output_dir / sample_id / execution_timestamp_str
+        )
 
         nxf_work_dir = sample_work_dir / f"{sample_id}_nxf_work"
         nxf_home_dir = worker_work_dir / ".nextflow"
@@ -304,6 +311,7 @@ class PipelineRunner:
         job_uuid: str,
         worker_work_dir: Path,
         worker_output_dir: Path,
+        execution_timestamp: datetime.datetime,
     ) -> None:
         """Submit the Kubernetes Job and return the result of execution.
 
@@ -316,6 +324,7 @@ class PipelineRunner:
             job_uuid: Unique job UUID.
             worker_work_dir: Output directory for intermediate files.
             worker_output_dir: Output directory for published outputs.
+            execution_timestamp: start time on execution.
 
         Raises:
             RetryablePipelineError: For failures eligible for retry (e.g., API errors,
@@ -329,7 +338,7 @@ class PipelineRunner:
         if completion_marker.exists():
             raise NonRetryablePipelineError("pipeline_already_completed")
         job_dirs = self._create_dirs(
-            sample_id, worker_work_dir, worker_output_dir
+            sample_id, worker_work_dir, worker_output_dir, execution_timestamp
         )
 
         try:
@@ -397,6 +406,7 @@ class PipelineRunner:
         job_uuid: str,
         worker_work_dir: Path,
         worker_output_dir: Path,
+        execution_timestamp: datetime.datetime,
     ) -> None:
         """Launch the given pipeline for a specific sample.
 
@@ -409,6 +419,7 @@ class PipelineRunner:
             job_uuid: Unique UUID for this pipeline run (from match_uuid in payload).
             worker_work_dir: Directory for intermediate files and Nextflow work.
             worker_output_dir: Directory for final published outputs.
+            execution_timestamp: start time of execution.
 
         Raises:
             RetryablePipelineError: When a failure is eligible for retry.
@@ -421,4 +432,5 @@ class PipelineRunner:
             job_uuid=job_uuid,
             worker_work_dir=worker_work_dir,
             worker_output_dir=worker_output_dir,
+            execution_timestamp=execution_timestamp,
         )
