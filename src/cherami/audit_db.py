@@ -32,13 +32,13 @@ class AuditDB:
                     climb_id TEXT NOT NULL,
                     job_uuid TEXT NOT NULL,
                     pipeline_name TEXT NOT NULL,
-                    timestamp TEXT NOT NULL,
+                    audit_timestamp TEXT NOT NULL,
                     status TEXT NOT NULL,
                     error_message TEXT,
                     attempt INTEGER,
                     max_attempts INTEGER,
-                    start_time REAL,
-                    end_time REAL,
+                    start_time TEXT,
+                    end_time TEXT,
                     duration REAL
                 )
                 """
@@ -50,7 +50,7 @@ class AuditDB:
             conn.execute(
                 """
                 INSERT INTO audit_log (
-                    climb_id, job_uuid, pipeline_name, timestamp, status,
+                    climb_id, job_uuid, pipeline_name, audit_timestamp, status,
                     error_message, attempt, max_attempts, start_time, end_time, duration
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
