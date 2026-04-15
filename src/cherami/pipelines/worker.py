@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import time
@@ -29,8 +30,8 @@ class PipelineResult:
     error_message: str | None = None
     attempt: int | None = None
     max_attempts: int | None = None
-    start_time: float | None = None
-    end_time: float | None = None
+    start_time: str | None = None
+    end_time: str | None = None
     duration: float | None = None
 
 
@@ -217,8 +218,8 @@ class Worker:
         error_message: str | None = None,
         attempt: int | None = None,
         max_attempts: int | None = None,
-        start_time: float | None = None,
-        end_time: float | None = None,
+        start_time: datetime.datetime | None = None,
+        end_time: datetime.datetime | None = None,
     ) -> PipelineResult:
         """Create a structured result object for audit logging.
 
@@ -239,11 +240,15 @@ class Worker:
             A PipelineResult used for the audit database.
         """
         duration = (
-            end_time - start_time
+            (end_time - start_time).total_seconds()
             ## skipped samples dont have start/end times
             if start_time is not None and end_time is not None
             else None
         )
+
+        start_time_str = start_time.isoformat("T") if start_time else None
+        end_time_str = end_time.isoformat("T") if end_time else None
+
         return PipelineResult(
             climb_id=climb_id,
             job_uuid=job_uuid,
@@ -252,8 +257,8 @@ class Worker:
             error_message=error_message,
             attempt=attempt,
             max_attempts=max_attempts,
-            start_time=start_time,
-            end_time=end_time,
+            start_time=start_time_str,
+            end_time=end_time_str,
             duration=duration,
         )
 
@@ -340,7 +345,10 @@ class Worker:
                         current_attempt,
                         total_attempts,
                     )
-                    start_time = time.time()
+                    start_time: datetime.datetime = datetime.datetime.now(
+                        datetime.UTC
+                    )
+
                     try:
                         self._runner.run_pipeline(
                             pipeline=pipeline,
@@ -348,9 +356,10 @@ class Worker:
                             job_uuid=job_uuid,
                             worker_work_dir=self.work_dir,
                             worker_output_dir=self.output_dir,
+                            execution_timestamp=start_time,
                         )
                     except RetryablePipelineError as e:
-                        end_time = time.time()
+                        end_time = datetime.datetime.now(datetime.UTC)
                         error_message = str(e)
                         if current_attempt >= total_attempts:
                             self._retry_counts.pop(climb_id, None)
@@ -402,7 +411,7 @@ class Worker:
                         self.on_retry(message)
                         continue
                     except NonRetryablePipelineError as e:
-                        end_time = time.time()
+                        end_time = datetime.datetime.now(datetime.UTC)
                         self._retry_counts.pop(climb_id, None)
                         result = self._create_result(
                             climb_id=climb_id,
@@ -428,7 +437,7 @@ class Worker:
                             "Non-retryable pipeline error"
                         ) from e
 
-                    end_time = time.time()
+                    end_time = datetime.datetime.now(datetime.UTC)
                     self._retry_counts.pop(climb_id, None)
                     result = self._create_result(
                         climb_id=climb_id,
