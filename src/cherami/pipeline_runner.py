@@ -3,6 +3,7 @@ import logging
 import time
 from pathlib import Path
 
+from kubernetes.client import V1Job
 from kubernetes.client.api import BatchV1Api
 from kubernetes.client.exceptions import ApiException
 from onyx.exceptions import OnyxConnectionError
@@ -182,6 +183,68 @@ class PipelineRunner:
             logger.debug("k8 job still running...")
             time.sleep(10)
 
+    def _build_job_annotations(
+        self,
+        job_dirs: dict[str, Path],
+        execution_timestamp: datetime.datetime,
+    ) -> dict[str, str]:
+        return {
+            "execution_timestamp": execution_timestamp.isoformat("T"),
+            "working_dir": str(job_dirs["working_dir"]),
+            "output_dir": str(job_dirs["output_dir"]),
+            "nxf_work_dir": str(job_dirs["nxf_work_dir"]),
+            "nxf_home_dir": str(job_dirs["nxf_home_dir"]),
+            "nxf_log_file": str(job_dirs["nxf_log_file"]),
+            "samplesheet_path": str(job_dirs["samplesheet_path"]),
+        }
+
+    def _read_job_dirs_from_annotations(
+        self,
+        annotations: dict[str, str] | None,
+    ) -> dict[str, Path]:
+        if not annotations:
+            raise NonRetryablePipelineError(
+                "existing_job_missing_run_metadata"
+            )
+
+        required_keys = [
+            "working_dir",
+            "output_dir",
+            "nxf_work_dir",
+            "nxf_home_dir",
+            "nxf_log_file",
+            "samplesheet_path",
+        ]
+        missing_keys = [key for key in required_keys if key not in annotations]
+        if missing_keys:
+            raise NonRetryablePipelineError(
+                "existing_job_missing_run_metadata"
+            )
+
+        return {
+            "working_dir": Path(annotations["working_dir"]),
+            "output_dir": Path(annotations["output_dir"]),
+            "nxf_work_dir": Path(annotations["nxf_work_dir"]),
+            "nxf_home_dir": Path(annotations["nxf_home_dir"]),
+            "nxf_log_file": Path(annotations["nxf_log_file"]),
+            "samplesheet_path": Path(annotations["samplesheet_path"]),
+        }
+
+    def _get_existing_job(
+        self,
+        *,
+        pipeline: Pipeline,
+        job_name: str,
+    ) -> V1Job | None:
+        jobs = self.k8_api.list_namespaced_job(
+            namespace=pipeline.config.namespace,
+            field_selector=f"metadata.name={job_name}",
+            limit=1,
+        )
+        if not jobs.items:
+            return None
+        return jobs.items[0]
+
     def _create_job(
         self,
         *,
@@ -189,68 +252,67 @@ class PipelineRunner:
         job_name: str,
         sample_id: str,
         job_uuid: str,
-        job_dirs: dict[str, Path],
-    ) -> None:
+        worker_work_dir: Path,
+        worker_output_dir: Path,
+        execution_timestamp: datetime.datetime,
+    ) -> V1Job:
         """Create and submit a Kubernetes Job for the pipeline.
-
-        Will "attach" to an existing job if one with the same name is found.
-        Otherwise, creates a new job.
 
         Args:
             pipeline: Pipeline instance to run.
             job_name: Name for the Kubernetes Job.
             sample_id: Sample identifier.
             job_uuid: Unique job UUID.
-            job_dirs: Dictionary containing all required run directories.
+            worker_work_dir: Base directory for intermediate work files.
+            worker_output_dir: Base directory for final outputs.
+            execution_timestamp: Start time of this execution attempt.
+
+        Returns:
+            The created Kubernetes Job object.
 
         Raises:
             ApiException: If Kubernetes API calls fail for reasons other than
             409 Conflict (which is treated as an existing run).
         """
-        ## to handle situations where a worker crashes with jobs pending, here
-        # poll for an existing job with same name, if this returns something we
-        ## can assume the job is already running or has completed within the k8
-        ## TTL window so can "re-attach" to it and move straight to the
-        ## validation loop. If the job isnt found, it is created like normal
-        jobs = self.k8_api.list_namespaced_job(
-            namespace=pipeline.config.namespace,
-            field_selector=f"metadata.name={job_name}",
-            limit=1,
+        job_dirs = self._create_dirs(
+            sample_id,
+            worker_work_dir,
+            worker_output_dir,
+            execution_timestamp,
         )
-        job_exists = bool(jobs.items)
+        pipeline.generate_samplesheet(
+            [sample_id],
+            job_uuid,
+            job_dirs["samplesheet_path"],
+        )
 
-        if not job_exists:
-            pipeline.generate_samplesheet(
-                [sample_id],
-                job_uuid,
-                job_dirs["samplesheet_path"],
+        job_manifest = pipeline.create_job_manifest(
+            job_id=job_uuid,
+            job_dirs=job_dirs,
+            annotations=self._build_job_annotations(
+                job_dirs,
+                execution_timestamp,
+            ),
+        )
+
+        try:
+            return self.k8_api.create_namespaced_job(
+                body=job_manifest,
+                namespace=pipeline.config.namespace,
             )
+        except ApiException as e:
+            ## if somehow the first check missed an existing job capture the 409 error here and let it continue
+            ## to the validation loop, otherwise raise any other exceptions
+            if e.status != 409:
+                raise
 
-            job_manifest = pipeline.create_job_manifest(
-                job_id=job_uuid,
-                job_dirs=job_dirs,
-            )
-
-            try:
-                self.k8_api.create_namespaced_job(
-                    body=job_manifest,
-                    namespace=pipeline.config.namespace,
-                )
-            except ApiException as e:
-                ## if somehow the first check missed an existing job capture
-                ## the 409 error here and let it continue to the validation
-                ## loop, otherwise raise any other exceptions
-                if e.status == 409:
-                    logger.warning(
-                        "Job %s already exists; attaching to existing run",
-                        job_name,
-                    )
-                else:
-                    raise
-        else:
-            logger.info(
-                "Attaching to existing job %s",
+            logger.warning(
+                "Job %s already exists; attaching to existing run",
                 job_name,
+            )
+            return self.k8_api.read_namespaced_job(
+                name=job_name,
+                namespace=pipeline.config.namespace,
             )
 
     def _create_dirs(
@@ -345,17 +407,27 @@ class PipelineRunner:
         completion_marker = sample_output_dir / ".cherami_complete"
         if completion_marker.exists():
             raise NonRetryablePipelineError("pipeline_already_completed")
-        job_dirs = self._create_dirs(
-            sample_id, worker_work_dir, worker_output_dir, execution_timestamp
-        )
 
         try:
-            self._create_job(
+            job = self._get_existing_job(
                 pipeline=pipeline,
                 job_name=job_name,
-                sample_id=sample_id,
-                job_uuid=job_uuid,
-                job_dirs=job_dirs,
+            )
+            if job is None:
+                job = self._create_job(
+                    pipeline=pipeline,
+                    job_name=job_name,
+                    sample_id=sample_id,
+                    job_uuid=job_uuid,
+                    worker_work_dir=worker_work_dir,
+                    worker_output_dir=worker_output_dir,
+                    execution_timestamp=execution_timestamp,
+                )
+            else:
+                logger.info("Attaching to existing job %s", job_name)
+
+            job_dirs = self._read_job_dirs_from_annotations(
+                job.metadata.annotations
             )
 
             complete = self._poll_job(

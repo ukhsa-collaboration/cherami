@@ -54,7 +54,9 @@ class StrepPneumoPipeline(Pipeline):
                 try:
                     # Pneumokity requires 2 fastqs as input so for SE pass same fastq twice
                     if climb_records["human_filtered_reads_2"] == "":
-                        climb_records["human_filtered_reads_2"] = climb_records["human_filtered_reads_1"]
+                        climb_records["human_filtered_reads_2"] = (
+                            climb_records["human_filtered_reads_1"]
+                        )
                     row = {
                         "climb_id": climb_id,
                         "fastq_1": climb_records["human_filtered_reads_1"],

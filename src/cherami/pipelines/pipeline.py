@@ -154,9 +154,9 @@ class Pipeline(ABC):
             )
 
         pod_env_values = [
-            ("NXF_WORK", job_dirs["nxf_work_dir"]),
-            ("NXF_HOME", job_dirs["nxf_home_dir"]),
-            ("NXF_LOG_FILE", job_dirs["nxf_log_file"]),
+            ("NXF_WORK", str(job_dirs["nxf_work_dir"])),
+            ("NXF_HOME", str(job_dirs["nxf_home_dir"])),
+            ("NXF_LOG_FILE", str(job_dirs["nxf_log_file"])),
         ]
         pod_env_values.extend(
             (name, os.environ[name]) for name in required_env_vars
@@ -170,6 +170,7 @@ class Pipeline(ABC):
         self,
         job_id: str,
         job_dirs: dict[str, Path],
+        annotations: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Returns the Kubernetes Job manifest for a pipeline run.
 
@@ -177,6 +178,7 @@ class Pipeline(ABC):
             job_id: UUID associated with the sample.
             climb_id: Climb id for a sample.
             job_dirs: Dictionary of filesystem paths used by the job.
+            annotations: Optional Kubernetes Job annotations for this run.
 
         Returns:
             Kubernetes Job manifest dictionary to submit via `create_namespaced_job`.
@@ -209,13 +211,17 @@ class Pipeline(ABC):
         command = " ".join(nextflow_cmd)
         logger.debug("Nextflow command: %s", command)
 
+        metadata = {
+            "name": job_name,
+            "namespace": self.config.namespace,
+        }
+        if annotations:
+            metadata["annotations"] = annotations
+
         return {
             "apiVersion": "batch/v1",
             "kind": "Job",
-            "metadata": {
-                "name": job_name,
-                "namespace": self.config.namespace,
-            },
+            "metadata": metadata,
             "spec": {
                 "ttlSecondsAfterFinished": 120,
                 "backoffLimit": self.config.backoff_limit,
