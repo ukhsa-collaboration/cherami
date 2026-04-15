@@ -55,7 +55,8 @@ class Worker:
         output_dir: Output directory for pipeline results.
         _audit_db: Audit database object logging pipeline events.
         listen_exchange: Varys exchange name for incoming jobs.
-        listen_queue_suffix: Queue suffix for incoming jobs used by varys for queue names.
+        listen_queue_suffix: Queue suffix for incoming jobs used by varys for
+            queue names.
         varys_config_path: Path to the Varys configuration file.
         varys_log_path: Path to the Varys log file.
         publish_queue_suffix: Optional queue suffix for completion messages.
@@ -94,13 +95,14 @@ class Worker:
     def on_skip(self, message: Any) -> None:
         """Handle messages that should be skipped.
 
-        The default implementation acknowledges the message to remove it from the
-        queue.
+        The default implementation acknowledges the message to remove it from
+        the queue.
 
         Override this method to implement custom logic for skipped samples.
 
         Args:
-            message: The Varys message object associated with the current sample.
+            message: The Varys message object associated with the current
+            sample.
 
         Raises:
             Exception: If the Varys client fails to acknowledge the message.
@@ -111,22 +113,26 @@ class Worker:
         """Handle successful pipeline completions.
 
         Publishes the result to a downstream queue if `publish_queue_suffix` is
-        configured, then acknowledges the original message. If `publish_exchange`
-        is not set, it defaults to publishing to the worker's `listen_exchange`.
+        configured, then acknowledges the original message. If
+        `publish_exchange` is not set, it defaults to publishing to the
+        worker's `listen_exchange`.
         This enables chaining workers where one worker's output queue becomes
         the next worker's input.
 
         Override this method to implement custom post-processing logic.
 
         Args:
-            message: The Varys message object associated with the current sample.
+            message: The Varys message object associated with the current
+                sample.
             payload: The message payload to publish downstream.
 
         Raises:
-            Exception: If the Varys client fails to publish or acknowledge the message.
+            Exception: If the Varys client fails to publish or acknowledge the
+                message.
         """
-        ## if a worker configured a publish queue, this  send that message to the listen_exchange,
-        ## unless the worker ALSO configures a publish_exchange, in which case use that
+        ## if a worker configured a publish queue, this  send that message to
+        ## the listen_exchange, unless the worker ALSO configures a
+        ## publish_exchange, in which case use that
         if self.publish_queue_suffix:
             target_exchange = self.publish_exchange or self.listen_exchange
             self._varys_client.send(
@@ -144,14 +150,15 @@ class Worker:
         """Handle pipeline failures eligible for retry.
 
         The default implementation negatively acknowledges (nacks) the message,
-        returning it to the queue for redelivery. The worker tracks retry counts
-        internally and calls to `on_sample_failure` if `max_retries` is
+        returning it to the queue for redelivery. The worker tracks retry
+        counts internally and calls to `on_sample_failure` if `max_retries` is
         exceeded.
 
         Override this method to implement custom retry strategies.
 
         Args:
-            message: The Varys message object associated with the current sample.
+            message: The Varys message object associated with the current
+                sample.
 
         Raises:
             Exception: If the Varys client fails to requeue the message.
@@ -165,14 +172,16 @@ class Worker:
         """Handle permanent pipeline failures.
 
         Invoked when a sample fails and is not eligible for retry (or has
-        exhausted all retry attempts). This method has no default implementation.
+        exhausted all retry attempts). This method has no default
+        implementation.
 
         Override this method to handle terminal failures, such as sending the
         message to a dead-letter queue, logging a detailed error report, or
         alerting an administrator.
 
         Args:
-            message: The Varys message object associated with the current sample.
+            message: The Varys message object associated with the current
+                sample.
         """
         ## TODO: consider publishing to an error queue if configured
 
@@ -182,10 +191,12 @@ class Worker:
     ) -> tuple[dict[str, Any], str, str]:
         """Extract sample information from the message.
 
-        Returns the message payload, sample ID (climb_id), and job UUID (match_uuid).
+        Returns the message payload, sample ID (climb_id), and job UUID
+        (match_uuid).
 
         Args:
-            message: The Varys message object associated with the current sample.
+            message: The Varys message object associated with the current
+            sample.
 
         Returns:
             A tuple containing:
@@ -194,7 +205,8 @@ class Worker:
             - The job UUID (match_uuid).
 
         Raises:
-            ValueError: If the message body is invalid JSON or missing required fields.
+            ValueError: If the message body is invalid JSON or missing required
+            fields.
         """
 
         try:
@@ -223,13 +235,14 @@ class Worker:
     ) -> PipelineResult:
         """Create a structured result object for audit logging.
 
-        Returns a PipelineResult suitable for audit logging. Duration is populated
-        only when both start and end timestamps are provided.
+        Returns a PipelineResult suitable for audit logging. Duration is
+        populated only when both start and end timestamps are provided.
 
         Args:
             climb_id: Sample identifier.
             job_uuid: Unique job UUID.
-            status: Outcome of the pipeline execution (SUCCESS, FAILED, SKIPPED, RETRY).
+            status: Outcome of the pipeline execution
+                (SUCCESS, FAILED, SKIPPED, RETRY).
             error_message: Description of the error if failed or retried.
             attempt: Current attempt number.
             max_attempts: Total allowed retry attempts.
@@ -268,7 +281,8 @@ class Worker:
         Runs the worker until it exits.
 
         Raises:
-            RuntimeError: If the worker exits due to a pipeline error or client initialisation failure.
+            RuntimeError: If the worker exits due to a pipeline error or client
+                initialisation failure.
             ValueError: If an incoming message cannot be parsed.
             Exception: If an unexpected error occurs and the worker exits.
         """
@@ -331,7 +345,8 @@ class Worker:
                     current_config_hash = hash_from_file(self._config_path)
                     if current_config_hash != self._startup_config_hash:
                         logger.warning(
-                            "Config file has changed since startup. Please restart the worker to apply changes.",
+                            "Config file has changed since startup. "
+                            "Please restart the worker to apply changes.",
                         )
 
                     max_retries = pipeline.config.max_retries
@@ -375,7 +390,8 @@ class Worker:
                             )
                             audit_db.add_record(result)
                             logger.error(
-                                "Pipeline retries exhausted for sample %s job %s pipeline %s (attempt %d/%d): %s",
+                                "Pipeline retries exhausted for sample %s job "
+                                "%s pipeline %s (attempt %d/%d): %s",
                                 climb_id,
                                 job_uuid,
                                 pipeline.config.name,
@@ -389,7 +405,8 @@ class Worker:
 
                         next_attempt = current_attempt + 1
                         logger.warning(
-                            "Retrying pipeline %s for sample %s job %s (next attempt %d/%d): %s",
+                            "Retrying pipeline %s for sample %s job %s "
+                            "(next attempt %d/%d): %s",
                             pipeline.config.name,
                             climb_id,
                             job_uuid,
@@ -425,7 +442,8 @@ class Worker:
                         )
                         audit_db.add_record(result)
                         logger.error(
-                            "Non-retryable pipeline error for sample %s job %s pipeline %s (attempt %d/%d): %s",
+                            "Non-retryable pipeline error for sample %s job "
+                            "%s pipeline %s (attempt %d/%d): %s",
                             climb_id,
                             job_uuid,
                             pipeline.config.name,

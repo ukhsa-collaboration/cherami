@@ -39,10 +39,11 @@ class PipelineRunner:
     def _cleanup(self, *, job_name: str, pipeline: Pipeline) -> None:
         """Delete a Kubernetes Job and wait for deletion to complete.
 
-        Kubernetes job deletion is asynchronous, so this method polls for up to 180 seconds
-        until the job returns a 404 status, indicating it has been removed. This wait
-        is necessary because attempting to create a new job with the same name before deletion
-        completes will result in a 409 error.
+        Kubernetes job deletion is asynchronous, so this method polls for up to
+        180 seconds until the job returns a 404 status, indicating it has been
+        removed. This wait is necessary because attempting to create a new job
+        with the same name before deletion completes will result in a 409
+        error.
 
         Args:
             job_name: Name of the Kubernetes Job to delete.
@@ -63,8 +64,9 @@ class PipelineRunner:
             if e.status != 404:
                 raise
 
-        ## k8 can sometimes take a while to delete jobs, so waits up to 180s for it to delete
-        ## otherwise a new job with the same uuid cant be created (will get error 409)
+        ## k8 can sometimes take a while to delete jobs, so waits up to 180s
+        ## for it to delete otherwise a new job with the same uuid cant be
+        ## created (will get error 409)
         deadline = time.time() + 180
         while True:
             try:
@@ -94,7 +96,8 @@ class PipelineRunner:
 
         Args:
             pipeline: Pipeline instance being evaluated.
-            job_dirs: Dictionary containing run directories, specifically "output_dir".
+            job_dirs: Dictionary containing run directories, specifically
+            "output_dir".
 
         Returns:
             True if the trace file exists and indicates success.
@@ -162,7 +165,8 @@ class PipelineRunner:
 
                 if failed_count >= pipeline.config.backoff_limit:
                     raise RetryablePipelineError(
-                        f"pod_failure_backoff_limit_exceeded: backoff_limit={pipeline.config.backoff_limit}"
+                        f"pod_failure_backoff_limit_exceeded: "
+                        f"backoff_limit={pipeline.config.backoff_limit}"
                     )
 
             if (
@@ -171,7 +175,8 @@ class PipelineRunner:
                 > pipeline.config.job_timeout
             ):
                 raise RetryablePipelineError(
-                    f"pod_failure_timeout: timeout_seconds={pipeline.config.job_timeout}"
+                    f"pod_failure_timeout: timeout_seconds="
+                    f"{pipeline.config.job_timeout}"
                 )
 
             logger.debug("k8 job still running...")
@@ -188,8 +193,8 @@ class PipelineRunner:
     ) -> None:
         """Create and submit a Kubernetes Job for the pipeline.
 
-        Will "attach" to an existing job if one with the same name is found. Otherwise,
-        creates a new job.
+        Will "attach" to an existing job if one with the same name is found.
+        Otherwise, creates a new job.
 
         Args:
             pipeline: Pipeline instance to run.
@@ -199,13 +204,14 @@ class PipelineRunner:
             job_dirs: Dictionary containing all required run directories.
 
         Raises:
-            ApiException: If Kubernetes API calls fail for reasons other than 409
-                Conflict (which is treated as an existing run).
+            ApiException: If Kubernetes API calls fail for reasons other than
+            409 Conflict (which is treated as an existing run).
         """
-        ## to handle situations where a worker crashes with jobs pending, here poll for an existing job with same
-        ## name, if this returns something we can assume the job is already running or has completed within the k8
-        ## TTL window so can "re-attach" to it and move straight to the validation loop. If the job isnt found, it
-        ## is created like normal
+        ## to handle situations where a worker crashes with jobs pending, here
+        # poll for an existing job with same name, if this returns something we
+        ## can assume the job is already running or has completed within the k8
+        ## TTL window so can "re-attach" to it and move straight to the
+        ## validation loop. If the job isnt found, it is created like normal
         jobs = self.k8_api.list_namespaced_job(
             namespace=pipeline.config.namespace,
             field_selector=f"metadata.name={job_name}",
@@ -231,8 +237,9 @@ class PipelineRunner:
                     namespace=pipeline.config.namespace,
                 )
             except ApiException as e:
-                ## if somehow the first check missed an existing job capture the 409 error here and let it continue
-                ## to the validation loop, otherwise raise any other exceptions
+                ## if somehow the first check missed an existing job capture
+                ## the 409 error here and let it continue to the validation
+                ## loop, otherwise raise any other exceptions
                 if e.status == 409:
                     logger.warning(
                         "Job %s already exists; attaching to existing run",
@@ -261,7 +268,8 @@ class PipelineRunner:
             sample_id: Sample identifier.
             worker_work_dir: Base directory for intermediate work files.
             worker_output_dir: Base directory for final outputs.
-            execution_timestamp: start time of execution - used to make output dirs.
+            execution_timestamp: start time of execution - used to make output
+            dirs.
 
         Returns:
             A dictionary containing paths for:
@@ -327,10 +335,10 @@ class PipelineRunner:
             execution_timestamp: start time on execution.
 
         Raises:
-            RetryablePipelineError: For failures eligible for retry (e.g., API errors,
-                pod crashes, timeouts).
-            NonRetryablePipelineError: For failures not eligible for retry (e.g.,
-                trace validation failure).
+            RetryablePipelineError: For failures eligible for retry (e.g., API
+                errors,pod crashes, timeouts).
+            NonRetryablePipelineError: For failures not eligible for retry
+                (e.g., trace validation failure).
         """
         job_name = f"{pipeline.config.name}-{job_uuid}"
         sample_output_dir = worker_output_dir / sample_id
@@ -410,14 +418,17 @@ class PipelineRunner:
     ) -> None:
         """Launch the given pipeline for a specific sample.
 
-        Runs the given pipeline for a specific sample. This validates the pipeline
+        Runs the given pipeline for a specific sample. This validates the
+        pipeline
         configuration and executes the run.
 
         Args:
             pipeline: Pipeline instance to run.
             sample_id: Unique identifier for the sample.
-            job_uuid: Unique UUID for this pipeline run (from match_uuid in payload).
-            worker_work_dir: Directory for intermediate files and Nextflow work.
+            job_uuid: Unique UUID for this pipeline run (from match_uuid in
+                payload).
+            worker_work_dir: Directory for intermediate files and Nextflow
+                work.
             worker_output_dir: Directory for final published outputs.
             execution_timestamp: start time of execution.
 

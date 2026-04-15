@@ -15,9 +15,10 @@ class AuditDB:
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
-        ## concurrent writes are technically possible - so set some params to wait 30s to acquire a lock
-        ## this should be enough time for most operations
-        ## will raise an OperationalError if it can't acquire the lock in that time which is caught in the worker
+        ## concurrent writes are technically possible - so set some params to
+        ## wait 30s to acquire a lock this should be enough time for most
+        ## operations will raise an OperationalError if it can't acquire the
+        ## lock in that time which is caught in the worker
         conn = sqlite3.connect(self.db_path, timeout=30)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=30000")
@@ -51,7 +52,8 @@ class AuditDB:
                 """
                 INSERT INTO audit_log (
                     climb_id, job_uuid, pipeline_name, audit_timestamp, status,
-                    error_message, attempt, max_attempts, start_time, end_time, duration
+                    error_message, attempt, max_attempts, start_time, end_time,
+                    duration
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
