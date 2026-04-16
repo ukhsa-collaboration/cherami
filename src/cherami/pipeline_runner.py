@@ -189,7 +189,9 @@ class PipelineRunner:
         execution_timestamp: datetime.datetime,
     ) -> dict[str, str]:
         return {
-            "execution_timestamp": execution_timestamp.isoformat("T"),
+            "execution_timestamp": execution_timestamp.isoformat("T").replace(
+                ":", ""
+            ),
             "working_dir": str(job_dirs["working_dir"]),
             "output_dir": str(job_dirs["output_dir"]),
             "nxf_work_dir": str(job_dirs["nxf_work_dir"]),
@@ -346,7 +348,9 @@ class PipelineRunner:
             OSError: If required directories cannot be created.
         """
         ## creates all the dirs to run a sample
-        execution_timestamp_str = execution_timestamp.isoformat("T")
+        execution_timestamp_str = execution_timestamp.isoformat("T").replace(
+            ":", ""
+        )
         sample_work_dir = worker_work_dir / sample_id / execution_timestamp_str
         sample_output_dir = (
             worker_output_dir / sample_id / execution_timestamp_str
