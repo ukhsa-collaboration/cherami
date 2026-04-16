@@ -22,8 +22,8 @@ def sample_result():
         error_message=None,
         attempt=1,
         max_attempts=3,
-        start_time=1000.0,
-        end_time=1060.0,
+        start_time="1000.0",
+        end_time="1060.0",
         duration=60.0,
     )
 
@@ -38,7 +38,7 @@ def test_init_db_creates_table(audit_db):
             "climb_id",
             "job_uuid",
             "pipeline_name",
-            "timestamp",
+            "audit_timestamp",
             "status",
             "error_message",
             "attempt",
@@ -69,7 +69,7 @@ def test_add_record_success(audit_db, sample_result):
         assert row["status"] == sample_result.status
         assert row["attempt"] == sample_result.attempt
         assert row["duration"] == sample_result.duration
-        assert row["timestamp"] is not None
+        assert row["audit_timestamp"] is not None
 
 
 def test_add_record_skipped(audit_db):

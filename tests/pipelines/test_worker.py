@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 from pathlib import Path
 
@@ -92,10 +93,9 @@ def test_create_result_with_timing(worker):
         climb_id="C123ABC",
         job_uuid="JOB123",
         status="SUCCESS",
-        start_time=100.0,
-        end_time=105.5,
+        start_time=dt.datetime.fromtimestamp(100.0, tz=dt.UTC),
+        end_time=dt.datetime.fromtimestamp(105.5, tz=dt.UTC),
     )
-
-    assert result.start_time == 100.0
-    assert result.end_time == 105.5
     assert result.duration == 5.5
+    assert result.start_time == "1970-01-01T00:01:40+00:00"
+    assert result.end_time == "1970-01-01T00:01:45.500000+00:00"
