@@ -2,6 +2,7 @@ import csv
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -83,17 +84,29 @@ class Pipeline(ABC):
         try:
             with trace_file.open("r") as f:
                 reader = csv.DictReader(f, delimiter="\t")
-                ## by default check all processes for exit code 0
+
                 if not self.proc_names:
+                    process_exitcodes_dict = defaultdict(list)
                     for row in reader:
-                        if row["exit"] != "0":
+                        process_exitcodes_dict[row["name"]].append(row["exit"])
+                    ## by default check all processes contain at least one 0 exitcode.
+                    ## this does not assume that the pipeline trace file is added in chronological
+                    ## order
+                    failing_processes = {
+                        k: v
+                        for k, v in process_exitcodes_dict.items()
+                        if "0" not in v
+                    }
+                    if failing_processes:
+                        for process, exitcodes in failing_processes:
                             logger.warning(
-                                "Process %s failed with exit code %s",
-                                row["name"],
-                                row["exit"],
+                                "Process %s failed with exit code(s) %s",
+                                process,
+                                exitcodes,
                             )
-                            return False
+                        return False
                     return True
+
                 ## if proc_names provided - determine allowed exit codes per process
                 ## this also allows you to only check a subset of processes if you want
                 for row in reader:
