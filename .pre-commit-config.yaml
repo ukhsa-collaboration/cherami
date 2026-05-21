@@ -8,3 +8,18 @@ repos:
       args: [ --fix ]
     # Run the formatter.
     - id: ruff-format
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+    - id: trailing-whitespace
+      name: Check for a blank line at the end of scripts (auto-fixes)
+    - id: end-of-file-fixer
+      name: Check for trailing whitespaces (auto-fixes)
+- repo: local
+  hooks:
+    - id: climb-id-checker
+      name: Check if climb ID pattern is present.
+      types: ["file"]
+      args: [--multiline]
+      entry: '[CA]-[A-F0-9]{5}'
+      language: pygrep
