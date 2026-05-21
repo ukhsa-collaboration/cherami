@@ -89,16 +89,18 @@ class Pipeline(ABC):
                     process_exitcodes_dict = defaultdict(list)
                     for row in reader:
                         process_exitcodes_dict[row["name"]].append(row["exit"])
-                    ## by default check all processes contain at least one 0 exitcode.
-                    ## this does not assume that the pipeline trace file is added in chronological
-                    ## order
+                    # By default, check all processes contain at least one 0
+                    # exitcode. This does not assume that the pipeline trace
+                    # file is added in chronological order, but does assume
+                    # that a process can't fail AFTER it has completed
+                    # succesfully.
                     failing_processes = {
                         k: v
                         for k, v in process_exitcodes_dict.items()
                         if "0" not in v
                     }
                     if failing_processes:
-                        for process, exitcodes in failing_processes:
+                        for process, exitcodes in failing_processes.items():
                             logger.warning(
                                 "Process %s failed with exit code(s) %s",
                                 process,
@@ -107,8 +109,9 @@ class Pipeline(ABC):
                         return False
                     return True
 
-                ## if proc_names provided - determine allowed exit codes per process
-                ## this also allows you to only check a subset of processes if you want
+                # If proc_names provided - determine allowed exit codes per
+                # process. This also allows you to only check a subset of
+                # processes if you want
                 for row in reader:
                     if row["name"] in self.proc_names:
                         allowed_exit_codes = self.proc_names[row["name"]]
