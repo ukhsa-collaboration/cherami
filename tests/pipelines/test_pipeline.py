@@ -104,7 +104,7 @@ def test_eval_exit_status_should_pass(pipeline, trace_file):
 )
 def test_eval_exit_status_should_fail(pipeline, trace_file, caplog):
     assert pipeline.evaluate_exit_status(trace_file) is False
-    assert "WARNING" in caplog.text
+    assert "ERROR" in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -165,7 +165,7 @@ def test_eval_exit_status__fail_then_complete_should_pass(
 )
 def test_eval_exit_status__one_fails(pipeline, trace_file, caplog):
     assert pipeline.evaluate_exit_status(trace_file) is False
-    assert "WARNING" in caplog.text
+    assert "ERROR" in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -274,7 +274,7 @@ def test_eval_exit_status_proc_names_completes_invalid_exitcode(
     pipeline_proc_names, trace_file, caplog
 ):
     assert pipeline_proc_names.evaluate_exit_status(trace_file) is False
-    assert "WARNING" in caplog.text
+    assert "ERROR" in caplog.text
 
 
 def test_eval_exit_status__entirely_empty_trace_file(
@@ -282,7 +282,7 @@ def test_eval_exit_status__entirely_empty_trace_file(
 ):
     """Check that entirely empty file returns false and logs warning."""
     assert pipeline_proc_names.evaluate_exit_status(empty_trace_file) is False
-    assert "WARNING" in caplog.text
+    assert "ERROR" in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -292,9 +292,11 @@ def test_eval_exit_status__entirely_empty_trace_file(
 def test_eval_exit_status__empty_trace_file(
     pipeline_proc_names, trace_file, caplog
 ):
-    """Check that file just with header and newline returns false and logs warning."""
+    """
+    Check that file just with header and newline returns false and logs error.
+    """
     assert pipeline_proc_names.evaluate_exit_status(trace_file) is False
-    assert "WARNING" in caplog.text
+    assert "ERROR" in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -321,7 +323,7 @@ def test_eval_exit_status__empty_rows_then_rows(
     Check that a csv with an empty line (with columns though) is handled.
     """
     assert pipeline_proc_names.evaluate_exit_status(trace_file) is False
-    assert "WARNING" in caplog.text
+    assert "ERROR" in caplog.text
 
 
 @pytest.mark.parametrize(
@@ -339,4 +341,82 @@ def test_eval_exit_status__bad_exitcodes(
     pipeline_proc_names, trace_file, caplog
 ):
     assert pipeline_proc_names.evaluate_exit_status(trace_file) is False
+    # should get warning about non-int exitcode and error about failing exitcode.
+    assert "WARNING" in caplog.text
+    assert "got not a real exitcode" in caplog.text
     assert "ERROR" in caplog.text
+    assert "failed with exit code" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        (
+            "1\t82/cac9ec\tnf-82cac7edfcf0128514abf5f17718a8af-b277c\t"
+            "NFCORE_DEMO:DEMO:FASTQC (SAMPLE1_PE)\tFAILED\t1\t"
+            "2025-09-24 12:16:37.439\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t"
+            "19.5 MB\t4.6 MB\n"
+            "2\t82/cac9ed\tnf-82cac7edfcf0128514abf5f17718a8af-b277e\t"
+            "NFCORE_DEMO:DEMO:FASTQC (SAMPLE1_PE)\tCOMPLETED\t5\t"
+            "2025-09-24 12:17:37.439\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t"
+            "19.5 MB\t4.6 MB\n"
+            "3\t82/cac9ee\tnf-82cac7edfcf0128514abf5f17718a8af-b277e\t"
+            "NFCORE_DEMO:DEMO:FASTQC (SAMPLE1_PE)\tCOMPLETED\t0\t"
+            "2025-09-24 12:18:37.439\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t"
+            "19.5 MB\t4.6 MB\n"
+            "4\t83/cacfff\tnf-83cac7edfcf0128514abf5f17718a8af-bffff\t"
+            "NFCORE_DEMO:DEMO:FASTQC (SAMPLE2_PE)\tFAILED\t-\t"
+            "2025-09-24 12:20:37.439\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t"
+            "19.5 MB\t4.6 MB\n"
+        ),
+    ],
+)
+def test_eval_exit_status__fails_nonint_exitcode(
+    pipeline_proc_names, trace_file, caplog
+):
+    """If one process fails with non-integer exitcode and doesn't complete at
+    all, it should fail overall."""
+    assert pipeline_proc_names.evaluate_exit_status(trace_file) is False
+    # should get warning about non-int exitcode and error about failing exitcode.
+    assert "WARNING" in caplog.text
+    assert "got -" in caplog.text
+    assert "ERROR" in caplog.text
+    assert "failed with exit code" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        (
+            "1\t80/cac7ed\tnf-80cac7edfcf0128514abf5f17718a8af-b277e\t"
+            "NFCORE_DEMO:DEMO:FASTQC (SAMPLE1_PE)\tCOMPLETED\t0\t"
+            "2025-09-24 12:17:37.439\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t"
+            "19.5 MB\t4.6 MB\n"
+            "2\t80/cac7ef\tnf-80cac7edfcf0128514abf5f17718a8af-b277f\t"
+            "NFCORE_DEMO:DEMO:FASTQC (SAMPLE2_PE)\tFAILED\t1\t"
+            "2025-09-24 12:18:37.440\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t"
+            "19.5 MB\t4.6 MB\n"
+            "3\t80/cac7eg\tnf-80cac7edfcf0128514abf5f17718a8af-b277g\t"
+            "NFCORE_DEMO:DEMO:FASTQC (SAMPLE2_PE)\tCOMPLETED\t0\t"
+            "2025-09-24 12:19:37.441\t13.6s\t9s\t164.1%\t526.8 MB\7.1 GB\t"
+            "19.5 MB\t4.6 MB\n"
+            "4\t80/cac7eh\tnf-80cac7edfcf0128514abf5f17718a8af-b277h\t"
+            "NFCORE_DEMO:DEMO:FASTQC (SAMPLE3_PE)\tCOMPLETED\t0\t"
+            "2025-09-24 12:20:37.442\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t"
+            "19.5 MB\t4.6 MB\n"
+            "5\t80/cac7ex\tnf-80cac7edfcf0128514abf5f17718a8af-b277x\t"
+            "NFCORE_DEMO:DEMO:FASTQC (SAMPLE4_PE)\tFAILED\t-\t"
+            "2025-09-24 12:20:37.443\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t"
+            "19.5 MB\t4.6 MB\n"
+        ),
+    ],
+)
+def test_eval_exit_status__one_failswith_noninteger_exitcode(
+    pipeline, trace_file, caplog
+):
+    assert pipeline.evaluate_exit_status(trace_file) is False
+    # should get warning about non-int exitcode and error about non-zero exitcode.
+    assert "WARNING" in caplog.text
+    assert "got -" in caplog.text
+    assert "ERROR" in caplog.text
+    assert "failed with exit code" in caplog.text
