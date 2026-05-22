@@ -371,17 +371,15 @@ def test_eval_exit_status__bad_exitcodes(
         ),
     ],
 )
-def test_eval_exit_status__fails_nonint_exitcode(
-    pipeline_proc_names, trace_file, caplog
+def test_eval_exit_status__ignores_nonint_exitcode(
+    pipeline_proc_names, trace_file
 ):
-    """If one process fails with non-integer exitcode and doesn't complete at
-    all, it should fail overall."""
-    assert pipeline_proc_names.evaluate_exit_status(trace_file) is False
-    # should get warning about non-int exitcode and error about failing exitcode.
-    assert "WARNING" in caplog.text
-    assert "got -" in caplog.text
-    assert "ERROR" in caplog.text
-    assert "failed with exit code" in caplog.text
+    """
+    One process fails with non-integer exitcode BUT that process is
+    not defined in proc_names, so it will pass. Only process SAMPLE1_PE is
+    checked.
+    """
+    assert pipeline_proc_names.evaluate_exit_status(trace_file) is True
 
 
 @pytest.mark.parametrize(
