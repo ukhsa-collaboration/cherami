@@ -418,3 +418,25 @@ def test_eval_exit_status__one_failswith_noninteger_exitcode(
     assert "got -" in caplog.text
     assert "ERROR" in caplog.text
     assert "failed with exit code" in caplog.text
+
+
+@pytest.fixture
+def missing_col_trace_file(tmp_path):
+    trace_path = tmp_path / "missing_trace.tsv"
+    trace_path.write_text(
+        "task_id\thash\tnative_id\tname\tstatus\tsubmit\tduration\t"
+        "realtime\t%cpu\tpeak_rss\tpeak_vmem\trchar\twchar\n"
+        "4\t83/cacaed\tnf-83cac7edfcf0128514abf5f17718a8af-b277e\t"
+        "NFCORE_DEMO:DEMO:FASTQC (SAMPLE1_PE)\tFAILED\t"
+        "2025-09-24 12:17:37.439\t13.6s\t9s\t164.1%\t526.8 MB\t7.1 GB\t"
+        "19.5 MB\t4.6 MB\n"
+    )
+    return trace_path
+
+
+def test_eval_exit_status__missing_col_in_file(
+    pipeline, missing_col_trace_file, caplog
+):
+    assert pipeline.evaluate_exit_status(missing_col_trace_file) is False
+    assert "ERROR" in caplog.text
+    assert "Expected to find column 'exit'" in caplog.text

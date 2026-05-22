@@ -98,7 +98,16 @@ class Pipeline(ABC):
                             row["name"],
                             row["exit"],
                         )
-                        process_exitcodes[row["name"]].append(row["exit"])
+                    except KeyError as k:
+                        logger.error(
+                            "Expected to find column %s in trace file. "
+                            "Cannot validate processes",
+                            k,
+                        )
+                        return False
+
+                    process_exitcodes[row["name"]].append(row["exit"])
+
                 # If the dict is empty, the file is empty (with or without header)
                 if not process_exitcodes:
                     logger.error("Trace file %s is empty.", trace_file)
