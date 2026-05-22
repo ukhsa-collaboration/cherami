@@ -26,7 +26,7 @@ class PipelineConfig:
     namespace: str
     container: str
     backoff_limit: int
-    max_retries: int
+    max_attempts: int
     retry_timeout: int
     job_timeout: int
 
@@ -35,10 +35,10 @@ class PipelineConfig:
         """Returns a PipelineConfig parsed from a raw config dictionary.
 
         Raises:
-            ValueError: If a required field is missing.
+            ValueError: If a required field is missing or max_attempts is less than 1.
         """
         try:
-            return cls(
+            pipeline = cls(
                 name=str(raw_config["name"]),
                 version=str(raw_config["version"]),
                 path=str(raw_config["path"]),
@@ -52,7 +52,7 @@ class PipelineConfig:
                 namespace=str(raw_config["namespace"]),
                 container=str(raw_config["container"]),
                 backoff_limit=int(raw_config["backoff_limit"]),
-                max_retries=int(raw_config["max_retries"]),
+                max_attempts=int(raw_config["max_attempts"]),
                 retry_timeout=int(raw_config["retry_timeout"]),
                 job_timeout=int(raw_config["job_timeout"]),
             )
@@ -60,6 +60,9 @@ class PipelineConfig:
             raise ValueError(
                 f"Pipeline missing required field: {error.args[0]}"
             ) from error
+        if pipeline.max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
+        return pipeline
 
 
 @dataclass(frozen=True)
@@ -154,35 +157,42 @@ def load_config(config_path: Path) -> CheramiConfig:
 
     Raises:
         OSError: If the config file cannot be read.
-        json.JSONDecodeError: If the config file is not valid JSON.
-        ValueError: If required config sections or fields are missing.
+        ValueError: If the config file is not valid JSON or fields are missing or invalid.
         Exception: If the pipeline module cannot be loaded.
     """
-    with config_path.open("r") as f:
-        raw_config = json.load(f)
+    try:
+        with config_path.open("r") as f:
+            raw_config = json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"{config_path}: invalid JSON: {e.msg} (line {e.lineno}, col {e.colno})"
+        ) from e
     start_hash = hash_from_raw(raw_config)
 
-    raw_global = raw_config.get("global")
-    if raw_global is None:
-        raise ValueError("Config missing 'global' section")
-    global_config = GlobalConfig.from_dict(raw_global)
+    try:
+        raw_global = raw_config.get("global")
+        if raw_global is None:
+            raise ValueError("missing 'global' section")
+        global_config = GlobalConfig.from_dict(raw_global)
 
-    raw_pipeline = raw_config.get("pipeline")
-    if raw_pipeline is None:
-        raise ValueError("Config missing 'pipeline' section")
-    pipeline_config = PipelineConfig.from_dict(raw_pipeline)
-    from cherami.pipelines import load_pipeline_module
+        raw_pipeline = raw_config.get("pipeline")
+        if raw_pipeline is None:
+            raise ValueError("missing 'pipeline' section")
+        pipeline_config = PipelineConfig.from_dict(raw_pipeline)
+        from cherami.pipelines import load_pipeline_module
 
-    load_pipeline_module(pipeline_config.name)
+        load_pipeline_module(pipeline_config.name)
 
-    raw_worker = raw_config.get("worker")
-    if raw_worker is None:
-        raise ValueError("Config missing 'worker' section")
-    worker_config = WorkerConfig.from_dict(
-        raw_worker,
-        config_path,
-        start_hash,
-    )
+        raw_worker = raw_config.get("worker")
+        if raw_worker is None:
+            raise ValueError("missing 'worker' section")
+        worker_config = WorkerConfig.from_dict(
+            raw_worker,
+            config_path,
+            start_hash,
+        )
+    except ValueError as e:
+        raise ValueError(f"{config_path}: {e}") from e
 
     return CheramiConfig(
         global_config=global_config,

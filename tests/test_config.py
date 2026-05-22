@@ -36,7 +36,7 @@ def valid_pipeline():
         "namespace": "imafake-ns",
         "container": "nextflow/nextflow:latest",
         "backoff_limit": 3,
-        "max_retries": 2,
+        "max_attempts": 2,
         "retry_timeout": 300,
         "job_timeout": 3600,
     }
@@ -158,11 +158,38 @@ def test_load_config_valid(
     mock_load.assert_called_once_with("test-pipeline")
 
 
-def test_load_config_fail(tmp_path, valid_global):
+def test_load_config_valid_but_incomplete(tmp_path, valid_global):
     config_data = {"global": valid_global}
     config_file = tmp_path / "incomplete_config.json"
     with config_file.open("w") as f:
         json.dump(config_data, f)
 
-    with pytest.raises(ValueError, match="Config missing 'pipeline' section"):
+    with pytest.raises(ValueError, match="missing 'pipeline' section"):
+        load_config(config_file)
+
+
+def test_load_config_invalid_json(tmp_path):
+    config_file = tmp_path / "bad.json"
+    config_file.write_text('{"max_attempts": iminvalidjson}')
+
+    with pytest.raises(ValueError, match="invalid JSON"):
+        load_config(config_file)
+
+
+@pytest.mark.parametrize("value", [0, -1])
+def test_load_config_maxattempts_wrong_value(
+    tmp_path, valid_global, valid_pipeline, valid_worker, mocker, value
+):
+    mocker.patch("cherami.pipelines.load_pipeline_module")
+    valid_pipeline["max_attempts"] = value
+    config_data = {
+        "global": valid_global,
+        "pipeline": valid_pipeline,
+        "worker": valid_worker,
+    }
+    config_file = tmp_path / "config.json"
+    with config_file.open("w") as f:
+        json.dump(config_data, f)
+
+    with pytest.raises(ValueError, match="max_attempts must be at least 1"):
         load_config(config_file)
