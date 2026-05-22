@@ -104,28 +104,22 @@ class Pipeline(ABC):
                     logger.error("Trace file %s is empty.", trace_file)
                     return False
                 # If proc_names provided - determine allowed exit codes per
-                # process. This also allows you to only check a subset of
+                # process deinfe. This allows you to ONLY check a subset of
                 # processes if you want
-                failing_processes: dict[str, list[int | str]] = {}
                 if self.proc_names:
+                    failing_processes: dict[str, list[int | str]] = {}
                     for proc, ec in process_exitcodes.items():
                         if proc in self.proc_names:
                             allowed_ec: set[int] = set(self.proc_names[proc])
                             if not any(e in allowed_ec for e in ec):
                                 failing_processes[proc] = ec
-                        else:
-                            failing_processes = {
-                                proc: ec
-                                for proc, ec in process_exitcodes.items()
-                                if 0 not in ec
-                            }
 
                 # By default, check all processes contain at least one 0
                 # exitcode. This does not assume that the pipeline trace file
                 # is added in chronological order, but does assume that a
                 # process can't fail AFTER it has completed succesfully
                 else:
-                    failing_processes = {
+                    failing_processes: dict[str, list[int | str]] = {
                         proc: ec
                         for proc, ec in process_exitcodes.items()
                         if 0 not in ec
