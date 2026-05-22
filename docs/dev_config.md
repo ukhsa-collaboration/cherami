@@ -54,7 +54,7 @@ These settings configure the `Pipeline` object and the Kubernetes Jobs it spawns
 | `namespace` | Yes | Kubernetes namespace where the Job will run. |
 | `container` | Yes | Container image used to execute the Nextflow head process. |
 | `backoff_limit` | Yes | Maximum number of pod restarts allowed before the Job is marked as failed. |
-| `max_retries` | Yes | Maximum number of times Cherami will retry a failed sample analysis. |
+| `max_attempts` | Yes | Total number of attempts Cherami will make for a failed sample analysis (must be at least 1). |
 | `retry_timeout` | Yes | Wait time (in seconds) between retries. |
 | `job_timeout` | Yes | Maximum execution time (in seconds) before the Job is timed out. |
 
@@ -95,7 +95,7 @@ Below is a minimal valid configuration. See `configs/cherami_amr.json` or `confi
     "namespace": "my-namespace",
     "container": "quay.io/climb-tre/nextflow",
     "backoff_limit": 5,
-    "max_retries": 1,
+    "max_attempts": 2,
     "retry_timeout": 10,
     "job_timeout": 3600
   },
