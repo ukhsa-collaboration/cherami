@@ -2,6 +2,7 @@ import csv
 import logging
 import os
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -72,41 +73,76 @@ class Pipeline(ABC):
         Returns:
             `True` if the trace file exists and every relevant process satisfies its
             defined exit code, otherwise `False`.
-
-        Raises:
-            KeyError: If the trace file is missing required columns.
-            ValueError: If an exit code cannot be parsed.
         """
         if not trace_file.exists():
+            logger.error("Trace file %s does not exist.", trace_file)
             return False
 
         try:
             with trace_file.open("r") as f:
                 reader = csv.DictReader(f, delimiter="\t")
-                ## by default check all processes for exit code 0
-                if not self.proc_names:
-                    for row in reader:
-                        if row["exit"] != "0":
-                            logger.warning(
-                                "Process %s failed with exit code %s",
-                                row["name"],
-                                row["exit"],
-                            )
-                            return False
-                    return True
-                ## if proc_names provided - determine allowed exit codes per process
-                ## this also allows you to only check a subset of processes if you want
+
+                process_exitcodes: defaultdict[str, list[int | str]] = (
+                    defaultdict(list)
+                )
                 for row in reader:
-                    if row["name"] in self.proc_names:
-                        allowed_exit_codes = self.proc_names[row["name"]]
-                        if int(row["exit"]) not in allowed_exit_codes:
-                            logger.warning(
-                                "Process %s failed with exit code %s",
-                                row["name"],
-                                row["exit"],
-                            )
-                            return False
+                    # If there is a line of empty 'columns', skip
+                    if all(val == "" for val in row.values()):
+                        continue
+                    try:
+                        process_exitcodes[row["name"]].append(int(row["exit"]))
+                    except ValueError:
+                        logger.warning(
+                            "Expected integer-like exitcode in trace"
+                            "file for process %s, got %s",
+                            row["name"],
+                            row["exit"],
+                        )
+                        process_exitcodes[row["name"]].append(row["exit"])
+                    except KeyError as k:
+                        logger.error(
+                            "Expected to find column %s in trace file. "
+                            "Cannot validate processes",
+                            k,
+                        )
+                        return False
+
+                # If the dict is empty, the file is empty (with or without header)
+                if not process_exitcodes:
+                    logger.error("Trace file %s is empty.", trace_file)
+                    return False
+                # If proc_names provided - determine allowed exit codes per
+                # process deinfe. This allows you to ONLY check a subset of
+                # processes if you want
+                if self.proc_names:
+                    failing_processes: dict[str, list[int | str]] = {}
+                    for proc, ec in process_exitcodes.items():
+                        if proc in self.proc_names:
+                            allowed_ec: set[int] = set(self.proc_names[proc])
+                            if not any(e in allowed_ec for e in ec):
+                                failing_processes[proc] = ec
+
+                # By default, check all processes contain at least one 0
+                # exitcode. This does not assume that the pipeline trace file
+                # is added in chronological order, but does assume that a
+                # process can't fail AFTER it has completed succesfully
+                else:
+                    failing_processes: dict[str, list[int | str]] = {
+                        proc: ec
+                        for proc, ec in process_exitcodes.items()
+                        if 0 not in ec
+                    }
+                # Write to log
+                if failing_processes:
+                    for proc, ecs in failing_processes.items():
+                        logger.error(
+                            "Process %s failed with exit code(s) %s",
+                            proc,
+                            ecs,
+                        )
+                    return False
                 return True
+
         except FileNotFoundError:
             return False
 
