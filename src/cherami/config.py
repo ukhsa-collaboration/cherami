@@ -164,9 +164,8 @@ def load_config(config_path: Path) -> CheramiConfig:
         with config_path.open("r") as f:
             raw_config = json.load(f)
     except json.JSONDecodeError as e:
-        raise ValueError(
-            f"{config_path}: invalid JSON: {e.msg} (line {e.lineno}, col {e.colno})"
-        ) from e
+        e.add_note(f"invalid JSON in config file: {config_path}")
+        raise
     start_hash = hash_from_raw(raw_config)
 
     try:
@@ -192,7 +191,8 @@ def load_config(config_path: Path) -> CheramiConfig:
             start_hash,
         )
     except ValueError as e:
-        raise ValueError(f"{config_path}: {e}") from e
+        e.add_note(f"while reading config file: {config_path}")
+        raise
 
     return CheramiConfig(
         global_config=global_config,
