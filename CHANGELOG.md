@@ -1,9 +1,10 @@
 # Changelog
+## unreleased v1.0.0
 
-All notable changes to this project will be documented in this file.
+### Changed
+- _breaking_: allow the user to explicitly set the number of attempts for a pipeline - this is validated at config parse time that this value is >=1. This is a breaking to change to all configs.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
 
 ## [0.1.0]
 

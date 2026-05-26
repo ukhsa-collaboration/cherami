@@ -48,7 +48,7 @@ Create a new configuration file in `configs/` (e.g., `configs/cherami_my_pipelin
     "namespace": "ns-synthscape-ukhsa",
     "container": "quay.io/climb-tre/nextflow",
     "backoff_limit": 5,
-    "max_retries": 1,
+    "max_attempts": 2,
     "retry_timeout": 10,
     "job_timeout": 3600
   },
@@ -163,7 +163,7 @@ The default `Worker` class (`src/cherami/pipelines/worker.py`) is sufficient for
 1. Listens to the configured exchange.
 2. Launches the pipeline.
 3. On success: Optionally republishes to a downstream queue (if `publish_queue_suffix` is set).
-4. On failure: Retries up to `max_retries` before giving up.
+4. On failure: Retries until `max_attempts` is exhausted.
 
 ### Custom Worker
 You can however, extend the base `Worker` if you need custom orchestration logic:

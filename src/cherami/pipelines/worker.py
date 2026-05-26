@@ -151,8 +151,8 @@ class Worker:
 
         The default implementation negatively acknowledges (nacks) the message,
         returning it to the queue for redelivery. The worker tracks retry
-        counts internally and calls to `on_sample_failure` if `max_retries` is
-        exceeded.
+        counts internally and calls to `on_sample_failure` if `max_attempts` is
+        exhausted.
 
         Override this method to implement custom retry strategies.
 
@@ -245,7 +245,7 @@ class Worker:
                 (SUCCESS, FAILED, SKIPPED, RETRY).
             error_message: Description of the error if failed or retried.
             attempt: Current attempt number.
-            max_attempts: Total allowed retry attempts.
+            max_attempts: Total allowed attempts.
             start_time: Timestamp when execution started.
             end_time: Timestamp when execution finished.
 
@@ -307,8 +307,8 @@ class Worker:
                 ## logic. If it does not pass, call `on_skip` to ack and move to next sample. If it does pass, call
                 ## `run_pipeline` on the `PipelineRunner` instance to then launch the pipeline. Exceptions indicate
                 ## failure states. If success, call `on_success` to ack and potentially publish to next queue. If
-                ## failure, it will be retried up to `max_retries`, calling `on_retry` to nack the message so
-                ## it goes back to the queue. If max_retries is exceeded, call `on_sample_failure` to ack and handle
+                ## failure, it will be retried up to `max_attempts`, calling `on_retry` to nack the message so
+                ## it goes back to the queue. If max_attempts is exhausted, call `on_sample_failure` to ack and handle
                 # the error to move on.
                 try:
                     message = self._varys_client.receive(
@@ -349,8 +349,7 @@ class Worker:
                             "Please restart the worker to apply changes.",
                         )
 
-                    max_retries = pipeline.config.max_retries
-                    total_attempts = max_retries + 1
+                    total_attempts = pipeline.config.max_attempts
                     current_attempt = self._retry_counts.get(climb_id, 0) + 1
                     self._retry_counts[climb_id] = current_attempt
 

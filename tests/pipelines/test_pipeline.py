@@ -39,7 +39,7 @@ def pipeline_config():
         namespace="imafake-ns",
         container="nextflow/nextflow:latest",
         backoff_limit=3,
-        max_retries=2,
+        max_attempts=2,
         retry_timeout=300,
         job_timeout=3600,
     )
