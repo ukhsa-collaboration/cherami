@@ -12,6 +12,7 @@ dependencies = [
     "climb-onyx-client>=4.8.2",
     "kubernetes>=33.1.0",
     "varys-client==1.2.0",
+    "onyx-analysis-helper@git+https://github.com/ukhsa-collaboration/onyx-analysis-helper.git@v0.5.1"
 ]
 
 [project.scripts]
