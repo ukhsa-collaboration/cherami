@@ -196,6 +196,28 @@ ANOTHER_MOCK_ANALYSIS_TABLE = {
 
 
 @patch(
+    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses",
+    return_value={},
+)
+@patch(
+    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
+    return_value=MOCK_ONYX_RECORD_OLD,
+)
+def test_should_run_no_tables(
+    onyx_versions_query,
+    mocked_analyses,
+    orange_box_pipeline,
+):
+    """Should run - if not analyses are available."""
+    from cherami.config import GlobalConfig, PipelineConfig
+
+    GlobalConfig.server = "server"
+    PipelineConfig.version = "1.2.3"
+
+    assert orange_box_pipeline.should_run("ID-123456")
+
+
+@patch(
     target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get_analysis",
     return_value=MOCK_ANALYSIS_TABLE.copy(),
 )
@@ -207,7 +229,7 @@ ANOTHER_MOCK_ANALYSIS_TABLE = {
     "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
     return_value=MOCK_ONYX_RECORD_OLD,
 )
-def test_should_run(
+def test_should_run_matching_upstream_and_ob_version(
     onyx_versions_query,
     mocked_analyses,
     mocked_analysis_table,
@@ -220,3 +242,57 @@ def test_should_run(
     PipelineConfig.version = "1.2.3"
 
     assert not orange_box_pipeline.should_run("ID-123456")
+
+
+@patch(
+    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get_analysis",
+    return_value=MOCK_ANALYSIS_TABLE.copy(),
+)
+@patch(
+    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses",
+    return_value=MOCK_ANALYSIS_RECORD.copy(),
+)
+@patch(
+    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
+    return_value=MOCK_ONYX_RECORD_OLD,
+)
+def test_should_run_new_orange_box_version(
+    onyx_versions_query,
+    mocked_analyses,
+    mocked_analysis_table,
+    orange_box_pipeline,
+):
+    """Should run - has same upstream context BUT old orange box version."""
+    from cherami.config import GlobalConfig, PipelineConfig
+
+    GlobalConfig.server = "server"
+    PipelineConfig.version = "2.3.4"
+
+    assert orange_box_pipeline.should_run("ID-123456")
+
+
+@patch(
+    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get_analysis",
+    return_value=MOCK_ANALYSIS_TABLE.copy(),
+)
+@patch(
+    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses",
+    return_value=MOCK_ANALYSIS_RECORD.copy(),
+)
+@patch(
+    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
+    return_value=MOCK_ONYX_RECORD_OLD_NEW_CLASSIFIER,
+)
+def test_should_run_different_upsteam(
+    onyx_versions_query,
+    mocked_analyses,
+    mocked_analysis_table,
+    orange_box_pipeline,
+):
+    """Should run - has same orange box version BUT different upstream context."""
+    from cherami.config import GlobalConfig, PipelineConfig
+
+    GlobalConfig.server = "server"
+    PipelineConfig.version = "1.2.3"
+
+    assert orange_box_pipeline.should_run("ID-123456")
