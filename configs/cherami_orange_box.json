@@ -1,7 +1,8 @@
 {
   "global": {
     "work_dir": "/shared/team/projects/downstream_orchestration/work",
-    "output_dir": "/shared/team/projects/downstream_orchestration/output"
+    "output_dir": "/shared/team/projects/downstream_orchestration/output",
+    "server": "synthscape"
   },
   "pipeline": {
     "name": "orange-box",
