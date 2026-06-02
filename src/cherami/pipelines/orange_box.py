@@ -58,9 +58,17 @@ class OrangeBoxPipeline(Pipeline):
 
         if exitcode != 0:
             logger.error(
-                "Cannot query Onyx for analyses for sample %s." % (sample_id)  # noqa: G002, UP031
+                "Cannot query Onyx for analyses for sample %s.", sample_id
             )
             return False
+
+        # If there are no analysis tables, just run:
+        if not analysis_tables:
+            logger.info(
+                "Inbound sample %s has no analysis tables, running orange box.",
+                sample_id,
+            )
+            return True
 
         # First get a set of the orange_box_versions and the onyx_version_hashes
         orange_box_versions = set()
@@ -95,15 +103,71 @@ class OrangeBoxPipeline(Pipeline):
         orange_box_version = PipelineConfig.version
 
         # Then check if all of the current onyx
+        orange_box_match = orange_box_version in orange_box_versions
+        upstream_context_match = current_onyx_hash in onyx_versions_hashes
 
-        if (  # noqa: SIM103
-            orange_box_version in orange_box_versions
-            and current_onyx_hash in onyx_versions_hashes
-        ):
+        if orange_box_match and upstream_context_match:
             # do not rerun if orange box version matches and upstream context matches
+            logger.warning(
+                "Sample %s has up-to-date analysis tables, skipping.",
+                sample_id,
+            )
+            logger.debug(
+                "Inbound sample %s has analysis IDs %s. Analysis tables "
+                "are up-to-date - orange box version(s) %s, upstream context "
+                "hash %s. Decision: not run.",
+                sample_id,
+                list(analysis_tables.keys()),
+                list(orange_box_versions),
+                current_onyx_hash,
+            )
             return False
-        else:
+        elif upstream_context_match and not orange_box_match:
+            # Orange box version does not match, rerun:
+            logger.debug(
+                "Inbound sample %s has analysis IDs %s. Analysis tables "
+                "have different orange box version(s) - %s, current "
+                "orange box version is %s. Upstream context in analysis "
+                "tables matches current, hash: %s "
+                "Decision: run.",
+                sample_id,
+                list(analysis_tables.keys()),
+                list(orange_box_versions),
+                orange_box_version,
+                current_onyx_hash,
+            )
             return True
+        elif orange_box_match and not upstream_context_match:
+            # upstream context does not match, some change in onyx versions, run
+            logger.debug(
+                "Inbound sample %s has analysis IDs %s. Analysis tables "
+                "have orange box version(s) %s. Current "
+                "upstream context has hash %s which does not match any "
+                "analysis tables. Decision: run.",
+                sample_id,
+                list(analysis_tables.keys()),
+                list(orange_box_versions),
+                current_onyx_hash,
+            )
+            return True
+        elif not orange_box_match and not upstream_context_match:
+            # neither match
+            logger.debug(
+                "Inbound sample %s has analysis IDs %s. Analysis tables "
+                "have different orange box version(s) - %s. Current "
+                "upstream context has hash %s which does not match any "
+                "analysis tables. Decision: run.",
+                sample_id,
+                list(analysis_tables.keys()),
+                list(orange_box_versions),
+                current_onyx_hash,
+            )
+            return True
+        else:
+            logger.debug(
+                "Unexpected error with Orange Box should run decision logic."
+            )
+            return False
 
 
 def build_worker(
