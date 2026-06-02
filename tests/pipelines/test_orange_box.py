@@ -1,9 +1,14 @@
 import csv
+import logging
 from unittest.mock import patch
 
 import pytest
 
+from cherami.config import GlobalConfig, PipelineConfig
 from cherami.pipelines.orange_box import OrangeBoxPipeline
+
+GlobalConfig.server = "server"
+PipelineConfig.version = "1.2.3"
 
 
 @pytest.fixture
@@ -204,17 +209,12 @@ ANOTHER_MOCK_ANALYSIS_TABLE = {
     return_value=MOCK_ONYX_RECORD_OLD,
 )
 def test_should_run_no_tables(
-    onyx_versions_query,
-    mocked_analyses,
-    orange_box_pipeline,
+    onyx_versions_query, mocked_analyses, orange_box_pipeline, caplog
 ):
     """Should run - if not analyses are available."""
-    from cherami.config import GlobalConfig, PipelineConfig
-
-    GlobalConfig.server = "server"
-    PipelineConfig.version = "1.2.3"
-
-    assert orange_box_pipeline.should_run("ID-123456")
+    with caplog.at_level(logging.INFO):
+        assert orange_box_pipeline.should_run("ID-123456")
+        assert "has no analysis tables, running orange box" in caplog.text
 
 
 @patch(
@@ -229,19 +229,20 @@ def test_should_run_no_tables(
     "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
     return_value=MOCK_ONYX_RECORD_OLD,
 )
-def test_should_run_matching_upstream_and_ob_version(
+def test_should_not_run_matching_upstream_and_ob_version(
     onyx_versions_query,
     mocked_analyses,
     mocked_analysis_table,
     orange_box_pipeline,
+    caplog,
 ):
     """Should not run - has same version orange box and has same upstream context."""
-    from cherami.config import GlobalConfig, PipelineConfig
-
-    GlobalConfig.server = "server"
-    PipelineConfig.version = "1.2.3"
-
-    assert not orange_box_pipeline.should_run("ID-123456")
+    with caplog.at_level(logging.DEBUG):
+        assert not orange_box_pipeline.should_run("ID-123456")
+        # check warning:
+        assert "has up-to-date analysis tables, skipping." in caplog.text
+        # check debug:
+        assert "Decision: not run." in caplog.text
 
 
 @patch(
@@ -261,14 +262,15 @@ def test_should_run_new_orange_box_version(
     mocked_analyses,
     mocked_analysis_table,
     orange_box_pipeline,
+    caplog,
 ):
     """Should run - has same upstream context BUT old orange box version."""
-    from cherami.config import GlobalConfig, PipelineConfig
 
-    GlobalConfig.server = "server"
     PipelineConfig.version = "2.3.4"
 
-    assert orange_box_pipeline.should_run("ID-123456")
+    with caplog.at_level(logging.DEBUG):
+        assert orange_box_pipeline.should_run("ID-123456")
+        assert "Decision: run." in caplog.text
 
 
 @patch(
@@ -288,11 +290,44 @@ def test_should_run_different_upsteam(
     mocked_analyses,
     mocked_analysis_table,
     orange_box_pipeline,
+    caplog,
 ):
     """Should run - has same orange box version BUT different upstream context."""
-    from cherami.config import GlobalConfig, PipelineConfig
 
-    GlobalConfig.server = "server"
-    PipelineConfig.version = "1.2.3"
+    with caplog.at_level(logging.DEBUG):
+        assert orange_box_pipeline.should_run("ID-123456")
+        assert "Decision: run." in caplog.text
 
-    assert orange_box_pipeline.should_run("ID-123456")
+
+@patch(
+    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get_analysis",
+    side_effect=[
+        MOCK_ANALYSIS_TABLE.copy(),
+        ANOTHER_MOCK_ANALYSIS_TABLE.copy(),
+    ],
+)
+@patch(
+    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses"
+)
+@patch(
+    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
+    return_value=MOCK_ONYX_RECORD_OLD_NEW_CLASSIFIER,
+)
+def test_should_run_multiple_analyses_one_match(
+    onyx_versions_query,
+    mocked_analyses,
+    mocked_analysis_table,
+    orange_box_pipeline,
+    caplog,
+):
+    """Should not run - has multiple analysis tables but same orange box version and same
+    upstream context."""
+
+    PipelineConfig.version = "2.3.4"
+
+    mocked_analyses.return_value = (
+        MOCK_ANALYSIS_RECORD.copy() + ANOTHER_MOCK_ANALYSIS_RECORD.copy()
+    )
+    with caplog.at_level(logging.DEBUG):
+        assert orange_box_pipeline.should_run("ID-123456")
+        assert "Decision: run." in caplog.text
