@@ -32,7 +32,8 @@ Create a new configuration file in `configs/` (e.g., `configs/cherami_my_pipelin
 {
   "global": {
     "work_dir": "/shared/team/projects/downstream_orchestration/work",
-    "output_dir": "/shared/team/projects/downstream_orchestration/output"
+    "output_dir": "/shared/team/projects/downstream_orchestration/output"m
+    "server": "synthscape"
   },
   "pipeline": {
     "name": "my-pipeline",
@@ -47,7 +48,7 @@ Create a new configuration file in `configs/` (e.g., `configs/cherami_my_pipelin
     "nf_extra_args": [],
     "namespace": "ns-synthscape-ukhsa",
     "container": "quay.io/climb-tre/nextflow",
-    "backoff_limit": 5,
+    "backoff_limit": 0,
     "max_attempts": 2,
     "retry_timeout": 10,
     "job_timeout": 3600
