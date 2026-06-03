@@ -1,8 +1,9 @@
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
-from cherami.config import PipelineConfig
+from cherami.config import GlobalConfig, PipelineConfig
 from cherami.pipelines import Pipeline
 
 
@@ -440,3 +441,33 @@ def test_eval_exit_status__missing_col_in_file(
     assert pipeline.evaluate_exit_status(missing_col_trace_file) is False
     assert "ERROR" in caplog.text
     assert "Expected to find column 'exit'" in caplog.text
+
+
+## Mock the main onyx query, from which get the record and versions.
+MOCK_ONYX_RECORD_OLD: dict[str, str | dict] = {
+    "climb_id": "ID-123456",
+    "site": "test",
+    "published_date": "2026-01-01",
+    "data": {"datapoint1": 1, "datapoint2": 2, "datapoint3": 3},
+    "classifier_version": "1.0.0",
+    "classifier_db_date": "1970-01-01",
+    "ncbi_taxonomy_date": "1970-01-01",
+    "scylla_version": "1.0.0",
+    "sylph_db_version": "1.0.0",
+    "alignment_db_version": "1.0.0",
+}
+
+CURRENT_ONYX_HASH = (
+    "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614"
+)
+"""This is the hash for the onyx versions in MOCK_ONYX_RECORD_OLD"""
+
+
+@patch(
+    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
+    return_value=MOCK_ONYX_RECORD_OLD,
+)
+def test_get_upstream_context_hash(mocked_onyx, pipeline):
+    GlobalConfig.server = "server"
+    pipeline.get_upstream_context_hash("ID-123456")
+    assert pipeline.current_onyx_hash == CURRENT_ONYX_HASH
