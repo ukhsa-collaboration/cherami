@@ -328,6 +328,8 @@ class Worker:
                         job_uuid,
                     )
                     # Once we have the message, get the upstream onyx context (versions) and make the hash:
+                    # import oa
+                    # upstream_context = pipeline.build_context()
                     pipeline.get_upstream_context_hash(
                         climb_id
                     )  # could this go into should_run?

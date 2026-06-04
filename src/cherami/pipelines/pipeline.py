@@ -12,6 +12,11 @@ from cherami.config import GlobalConfig, PipelineConfig
 
 logger = logging.getLogger(__name__)
 
+# @dataclass
+# class PipelineContext():
+#     # shared
+#     pass
+
 
 class Pipeline(ABC):
     """Base class for pipelines.
@@ -51,6 +56,9 @@ class Pipeline(ABC):
         Raises:
             OSError: If the samplesheet fails to write.
         """
+
+    # def build_context() -> PipelineContext:
+    #     pass
 
     def _check_paths(self) -> None:
         """Logs warnings for missing configured paths."""
@@ -354,3 +362,13 @@ class Pipeline(ABC):
                 },
             },
         }
+
+
+# class PathChar(Pipeline):
+#     def build_context():
+#         #super().build_context()
+#         # build from payload
+#         pass
+
+#     #def should_run() -> bool:
+#     #    pass
