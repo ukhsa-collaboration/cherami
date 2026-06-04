@@ -199,19 +199,24 @@ ANOTHER_MOCK_ANALYSIS_TABLE = {
     "analysis_id": "AID-89012345",
 }
 
+CURRENT_ONYX_HASH = (
+    "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614"
+)
+
+NEW_VERSION_ONYX_HASH = (
+    "81929bfff563946f4e5643fe6e3441835d964e48f8476c67723cfec714550be2"
+)
+
 
 @patch(
     target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses",
     return_value={},
 )
-@patch(
-    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
-    return_value=MOCK_ONYX_RECORD_OLD,
-)
 def test_should_run_no_tables(
-    onyx_versions_query, mocked_analyses, orange_box_pipeline, caplog
+    onyx_versions_query, orange_box_pipeline, caplog
 ):
     """Should run - if not analyses are available."""
+    orange_box_pipeline.current_onyx_hash = CURRENT_ONYX_HASH
     with caplog.at_level(logging.INFO):
         assert orange_box_pipeline.should_run("ID-123456")
         assert "has no analysis tables, running orange box" in caplog.text
@@ -225,12 +230,7 @@ def test_should_run_no_tables(
     target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses",
     return_value=MOCK_ANALYSIS_RECORD.copy(),
 )
-@patch(
-    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
-    return_value=MOCK_ONYX_RECORD_OLD,
-)
 def test_should_not_run_matching_upstream_and_ob_version(
-    onyx_versions_query,
     mocked_analyses,
     mocked_analysis_table,
     orange_box_pipeline,
@@ -238,6 +238,7 @@ def test_should_not_run_matching_upstream_and_ob_version(
 ):
     """Should not run - has same version orange box and has same upstream context."""
     with caplog.at_level(logging.DEBUG):
+        orange_box_pipeline.current_onyx_hash = CURRENT_ONYX_HASH
         assert not orange_box_pipeline.should_run("ID-123456")
         # check warning:
         assert "has up-to-date analysis tables, skipping." in caplog.text
@@ -253,19 +254,14 @@ def test_should_not_run_matching_upstream_and_ob_version(
     target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses",
     return_value=MOCK_ANALYSIS_RECORD.copy(),
 )
-@patch(
-    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
-    return_value=MOCK_ONYX_RECORD_OLD,
-)
 def test_should_run_new_orange_box_version(
-    onyx_versions_query,
     mocked_analyses,
     mocked_analysis_table,
     orange_box_pipeline,
     caplog,
 ):
     """Should run - has same upstream context BUT old orange box version."""
-
+    orange_box_pipeline.current_onyx_hash = CURRENT_ONYX_HASH
     PipelineConfig.version = "2.3.4"
 
     with caplog.at_level(logging.DEBUG):
@@ -281,19 +277,14 @@ def test_should_run_new_orange_box_version(
     target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses",
     return_value=MOCK_ANALYSIS_RECORD.copy(),
 )
-@patch(
-    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
-    return_value=MOCK_ONYX_RECORD_OLD_NEW_CLASSIFIER,
-)
 def test_should_run_different_upsteam(
-    onyx_versions_query,
     mocked_analyses,
     mocked_analysis_table,
     orange_box_pipeline,
     caplog,
 ):
     """Should run - has same orange box version BUT different upstream context."""
-
+    orange_box_pipeline.current_onyx_hash = NEW_VERSION_ONYX_HASH
     with caplog.at_level(logging.DEBUG):
         assert orange_box_pipeline.should_run("ID-123456")
         assert "Decision: run." in caplog.text
@@ -309,12 +300,7 @@ def test_should_run_different_upsteam(
 @patch(
     target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses"
 )
-@patch(
-    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
-    return_value=MOCK_ONYX_RECORD_OLD_NEW_CLASSIFIER,
-)
 def test_should_run_multiple_analyses_one_match(
-    onyx_versions_query,
     mocked_analyses,
     mocked_analysis_table,
     orange_box_pipeline,
@@ -322,7 +308,7 @@ def test_should_run_multiple_analyses_one_match(
 ):
     """Should not run - has multiple analysis tables but same orange box version and same
     upstream context."""
-
+    orange_box_pipeline.current_onyx_hash = NEW_VERSION_ONYX_HASH
     PipelineConfig.version = "2.3.4"
 
     mocked_analyses.return_value = (

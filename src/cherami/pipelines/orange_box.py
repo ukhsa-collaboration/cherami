@@ -1,6 +1,7 @@
 import csv
 import logging
 from pathlib import Path
+from typing import Any
 
 from onyx_analysis_helper import onyx_analysis_helper_functions as oa
 
@@ -50,6 +51,9 @@ class OrangeBoxPipeline(Pipeline):
         Returns:
             should_run_decision: should run? - bool True for yes False for no.
         """
+        if not self.current_onyx_hash:
+            self.get_upstream_context_hash(sample_id)
+
         analysis_tables, exitcode = oa.get_analysis_records(
             sample_id=sample_id,
             server=GlobalConfig.server,
@@ -83,28 +87,12 @@ class OrangeBoxPipeline(Pipeline):
             versions_dict = {ver["name"]: ver["version"] for ver in versions}
             orange_box_versions.add(versions_dict.get("orange_box_version"))
 
-        # Then get the current upstream context:
-        _, current_onyx_versions, exitcode = (
-            oa.get_data_and_versions_from_onyx(
-                sample_id=sample_id,
-                server=GlobalConfig.server,
-                fields=["climb_id"],
-            )
-        )
-        if exitcode != 0:
-            logger.error(
-                "Cannot query Onyx for upstream context, uncertain whether to run, exiting."
-            )
-            return False
-
-        current_onyx_hash = oa._calculate_versions_hash(current_onyx_versions)
-
         # Get the orange box version:
         orange_box_version = PipelineConfig.version
 
         # Then check if all of the current onyx
         orange_box_match = orange_box_version in orange_box_versions
-        upstream_context_match = current_onyx_hash in onyx_versions_hashes
+        upstream_context_match = self.current_onyx_hash in onyx_versions_hashes
 
         if orange_box_match and upstream_context_match:
             # do not rerun if orange box version matches and upstream context matches
@@ -119,7 +107,7 @@ class OrangeBoxPipeline(Pipeline):
                 sample_id,
                 list(analysis_tables.keys()),
                 list(orange_box_versions),
-                current_onyx_hash,
+                self.current_onyx_hash,
             )
             return False
         elif upstream_context_match and not orange_box_match:
@@ -134,7 +122,7 @@ class OrangeBoxPipeline(Pipeline):
                 list(analysis_tables.keys()),
                 list(orange_box_versions),
                 orange_box_version,
-                current_onyx_hash,
+                self.current_onyx_hash,
             )
             return True
         elif orange_box_match and not upstream_context_match:
@@ -147,7 +135,7 @@ class OrangeBoxPipeline(Pipeline):
                 sample_id,
                 list(analysis_tables.keys()),
                 list(orange_box_versions),
-                current_onyx_hash,
+                self.current_onyx_hash,
             )
             return True
         elif not orange_box_match and not upstream_context_match:
@@ -160,7 +148,7 @@ class OrangeBoxPipeline(Pipeline):
                 sample_id,
                 list(analysis_tables.keys()),
                 list(orange_box_versions),
-                current_onyx_hash,
+                self.current_onyx_hash,
             )
             return True
         else:
@@ -168,6 +156,35 @@ class OrangeBoxPipeline(Pipeline):
                 "Unexpected error with Orange Box should run decision logic."
             )
             return False
+
+
+class OrangeBoxWorker(Worker):
+    def on_skip(self, message: Any) -> None:
+        """Handle messages that should be skipped.
+
+        Orange box implementation will add the message to the publish queue
+        before acknowledging the message to remove it from the incoming queue.
+
+        Args:
+            message: The Varys message object associated with the current
+            sample.
+
+        Raises:
+            Exception: If the Varys client fails to acknowledge the message.
+        """
+        payload, _, _ = self._parse_message(message)
+        # payload should store orange box version and onyx versions hash
+        payload["upstream_onyx_hash"] = self.pipeline.current_onyx_hash
+        payload["orange_box_version"] = PipelineConfig.version
+
+        if self.publish_queue_suffix:
+            self._varys_client.send(
+                message=payload,
+                exchange=self.publish_exchange,
+                queue_suffix=self.publish_queue_suffix,
+            )
+
+        self._varys_client.acknowledge_message(message)
 
 
 def build_worker(

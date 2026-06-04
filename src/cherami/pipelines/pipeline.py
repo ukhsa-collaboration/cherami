@@ -6,9 +6,16 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from cherami.config import PipelineConfig
+from onyx_analysis_helper import onyx_analysis_helper_functions as oa
+
+from cherami.config import GlobalConfig, PipelineConfig
 
 logger = logging.getLogger(__name__)
+
+# @dataclass
+# class PipelineContext():
+#     # shared
+#     pass
 
 
 class Pipeline(ABC):
@@ -19,6 +26,7 @@ class Pipeline(ABC):
 
     def __init__(self, config: PipelineConfig) -> None:
         self.config = config
+        self.current_onyx_hash: str
 
     @property
     def proc_names(self) -> dict[str, list[int]]:
@@ -48,6 +56,9 @@ class Pipeline(ABC):
         Raises:
             OSError: If the samplesheet fails to write.
         """
+
+    # def build_context() -> PipelineContext:
+    #     pass
 
     def _check_paths(self) -> None:
         """Logs warnings for missing configured paths."""
@@ -145,6 +156,34 @@ class Pipeline(ABC):
 
         except FileNotFoundError:
             return False
+
+    def get_upstream_context_hash(self, sample_id: str) -> None:
+        """
+        Query Onyx for the upstream context and calculate the hash, store in
+        attribute.
+        """
+        _, current_onyx_versions, exitcode = (
+            oa.get_data_and_versions_from_onyx(
+                sample_id=sample_id,
+                server=GlobalConfig.server,
+                fields=["climb_id"],
+            )
+        )
+
+        if exitcode != 0:
+            logger.error(
+                "Cannot query Onyx for upstream context, see previous logs for reason."
+            )
+            raise RuntimeError(  # TODO is this the right kind of error?
+                "Onyx cannot be queries for upstream context - check logs. Exiting"
+            )
+
+        # TODO - need to handle this better - if can't get to onyx, can't get upstream versions.
+        # Might need to split the exitcodes from the onyxanalysis helper. Timeout could sleep and retry.
+
+        self.current_onyx_hash = oa._calculate_versions_hash(
+            current_onyx_versions
+        )
 
     def should_run(self, sample_id: str) -> bool:
         """Determine whether the pipeline should run for the given sample.
@@ -323,3 +362,13 @@ class Pipeline(ABC):
                 },
             },
         }
+
+
+# class PathChar(Pipeline):
+#     def build_context():
+#         #super().build_context()
+#         # build from payload
+#         pass
+
+#     #def should_run() -> bool:
+#     #    pass
