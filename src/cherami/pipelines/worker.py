@@ -93,7 +93,7 @@ class Worker:
         self._config_path: Path = worker_config.config_path
         self._startup_config_hash: str = worker_config.config_hash
 
-    def on_skip(self, message: Any) -> None:
+    def on_skip(self, message: Any, context: PipelineContext) -> None:
         """Handle messages that should be skipped.
 
         The default implementation acknowledges the message to remove it from
@@ -104,6 +104,8 @@ class Worker:
         Args:
             message: The Varys message object associated with the current
             sample.
+            context: the object holding information about the current upstream
+            context.
 
         Raises:
             Exception: If the Varys client fails to acknowledge the message.
@@ -328,6 +330,9 @@ class Worker:
                         climb_id,
                         job_uuid,
                     )
+
+                    # wrap in try except for runtimeerror
+
                     # Once we have the message, get the upstream onyx context:
                     upstream_context: PipelineContext = pipeline.build_context(
                         payload=payload
@@ -345,7 +350,7 @@ class Worker:
                             status="SKIPPED",
                         )
                         audit_db.add_record(result)
-                        self.on_skip(message)
+                        self.on_skip(message, upstream_context)
                         continue
 
                     current_config_hash = hash_from_file(self._config_path)
