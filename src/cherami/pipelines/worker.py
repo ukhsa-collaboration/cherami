@@ -14,6 +14,7 @@ from cherami.pipeline_runner import (
     RetryablePipelineError,
 )
 from cherami.pipelines import Pipeline
+from cherami.pipelines.pipeline import PipelineContext
 from cherami.utils import init_kubernetes, init_varys
 
 logger = logging.getLogger(__name__)
@@ -327,29 +328,23 @@ class Worker:
                         climb_id,
                         job_uuid,
                     )
-                    # Once we have the message, get the upstream onyx context (versions) and make the hash:
-                    # import oa
-                    # upstream_context = pipeline.build_context()
-                    pipeline.get_upstream_context_hash(
-                        climb_id
-                    )  # could this go into should_run?
-                    # TODO if can't get to onyx here, need to exit somehow - retry?
+                    # Once we have the message, get the upstream onyx context:
+                    upstream_context: PipelineContext = pipeline.build_context(
+                        payload=payload
+                    )
 
-                    if not pipeline.should_run(climb_id):
+                    if not pipeline.should_run(upstream_context):
                         logger.info(
-                            "Criteria not met for sample %s; acknowledging message",
+                            "Criteria not met for sample %s; acknowledging "
+                            "message.",
                             climb_id,
                         )
-                        result = self._create_result(
+                        result: PipelineResult = self._create_result(
                             climb_id=climb_id,
                             job_uuid=job_uuid,
                             status="SKIPPED",
                         )
                         audit_db.add_record(result)
-                        ## ad onyx hash to message here
-                        message["onyx_versions_hash"] = (
-                            pipeline.current_onyx_hash
-                        )
                         self.on_skip(message)
                         continue
 
