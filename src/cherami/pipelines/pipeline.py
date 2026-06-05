@@ -49,10 +49,13 @@ class PipelineContext:
         except KeyError as k:
             raise ValueError(f"Message missing {k}") from k
 
-    def set_upstream_context_hash(self) -> None:
+    def get_upstream_context_hash(self) -> str:
         """
         Query Onyx for the upstream context and calculate the hash, store in
         attribute.
+
+        Returns:
+            - string - onyx versions hash.
 
         Raises:
             - RuntimeError - if onyx cannot be reached.
@@ -76,9 +79,7 @@ class PipelineContext:
                 "Onyx cannot be queried for upstream context - check logs."
             )
 
-        self.current_onyx_hash = oa._calculate_versions_hash(
-            current_onyx_versions
-        )
+        return oa._calculate_versions_hash(current_onyx_versions)
 
 
 class Pipeline(ABC):
