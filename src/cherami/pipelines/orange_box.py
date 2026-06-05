@@ -36,9 +36,139 @@ class OrangeBoxPipeline(Pipeline):
 
     def build_context(self, payload: Any) -> PipelineContext:
         context = super().build_context(payload)
-        context.set_upstream_context_hash()
+        context.onyx_versions_hash = context.get_upstream_context_hash()
         context.orange_box_version = self.config.version
         return context
+
+    def should_run(self, context: PipelineContext) -> bool:
+        """
+        Determines whether orangebox should run.
+        Orange Box should run for a sample when either:
+        - no orangebox analysis tables exist for the current configured
+        orangebox version.
+        - the current Onyx upstream context differs from the upstream context
+        stored on orangebox analysis tables for the current configured
+        orangebox version.
+        Arguments:
+            sample_id: str, sample id.
+            server: str, must be valid onyx server.
+        Returns:
+            should_run_decision: should run? - bool True for yes False for no.
+        """
+        # lazy import because oa needs env vars.
+        from onyx_analysis_helper import onyx_analysis_helper_functions as oa
+
+        # First get all the analysis tables associated with the sample. This
+        # will include downstream analyses too, but that does not matter
+        # because if there are any present, they must have an upstream orange
+        # box analysis table to have run to create those tables.
+
+        analysis_tables: dict
+        exitcode: int
+        analysis_tables, exitcode = oa.get_analysis_records(
+            sample_id=context.climb_id,
+            server=context.server,
+            fields=["methods"],
+        )
+        # If we cannot get to onyx, exit early
+        if exitcode != 0:
+            logger.error(
+                "Cannot query Onyx for analyses for sample %s.",
+                context.climb_id,
+            )
+            raise RuntimeError("Cannot query onyx - check logs for reasons.")
+
+        # If there are no analysis tables, just run:
+        if not analysis_tables:
+            logger.debug(
+                "Inbound sample %s has no analysis tables, running orange box.",
+                context.climb_id,
+            )
+            return True
+
+        # Get a set of the (orange_box_version, onyx_version_hash) in all
+        # analysis tables
+        upstream_contexts: set[tuple] = set()
+
+        for table in analysis_tables.values():
+            # add onyx versions hashes from analysis tables:
+            onyx_versions_hash: str = table["methods"]["onyx_versions_hash"]
+
+            # Get the orange box version from the analysis tables
+            versions: list[dict] = table["methods"]["versions"]
+            versions_dict: dict = {
+                ver["name"]: ver["version"] for ver in versions
+            }
+            orange_box_version: str | None = versions_dict.get(
+                "orange_box_version"
+            )
+
+            upstream_contexts.add((onyx_versions_hash, orange_box_version))
+
+        # Make the current tuple to compare:
+        current_context: tuple[str | Any, str | Any] = (
+            context.onyx_versions_hash,
+            context.orange_box_version,
+        )
+
+        if current_context in upstream_contexts:
+            # do not rerun if orange box version matches and upstream context matches
+            logger.warning(
+                "Sample %s has up-to-date analysis tables, skipping.",
+                context.climb_id,
+            )
+            logger.debug(
+                "Inbound sample %s has analysis IDs %s. Analysis tables "
+                "are up-to-date - current upstream context: %s. "
+                "Decision: not run.",
+                context.climb_id,
+                list(analysis_tables.keys()),
+                current_context,
+            )
+            return False
+        else:
+            # This combination has not yet been run:
+            logger.debug(
+                "Inbound sample %s has analysis IDs %s. Analysis tables "
+                "have different orange box version(s) - %s. Current "
+                "upstream context is %s, which does not match any "
+                "analysis tables. Decision: run.",
+                context.climb_id,
+                list(analysis_tables.keys()),
+                current_context,
+            )
+            return True
+
+
+class OrangeBoxWorker(Worker):
+    def on_skip(self, message: Any, context: PipelineContext) -> None:
+        """Handle messages that should be skipped.
+
+        Orange box implementation will add the message to the publish queue
+        before acknowledging the message to remove it from the incoming queue.
+
+        Args:
+            message: The Varys message object associated with the current
+            sample.
+            context: the object holding information about the current upstream
+            context.
+
+        Raises:
+            Exception: If the Varys client fails to acknowledge the message.
+        """
+        downstream_payload = context.payload.copy()
+        # payload should store orange box version and onyx versions hash
+        downstream_payload["upstream_onyx_hash"] = context.current_onyx_hash
+        downstream_payload["orange_box_version"] = context.orange_box_version
+
+        if self.publish_queue_suffix:
+            self._varys_client.send(
+                message=downstream_payload,
+                exchange=self.publish_exchange,
+                queue_suffix=self.publish_queue_suffix,
+            )
+
+        self._varys_client.acknowledge_message(message)
 
 
 def build_worker(
