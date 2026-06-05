@@ -6,16 +6,79 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from onyx_analysis_helper import onyx_analysis_helper_functions as oa
-
-from cherami.config import GlobalConfig, PipelineConfig
+from cherami.config import PipelineConfig
 
 logger = logging.getLogger(__name__)
 
-# @dataclass
-# class PipelineContext():
-#     # shared
-#     pass
+
+class PipelineContext:
+    """Object to store the pipeline context."""
+
+    def __init__(
+        self, payload: Any, server: str, pipeline_version: str
+    ) -> None:
+        """
+        Attributes:
+            payload: dict of the json payload sent in the message.
+            server: server for the onyx database
+            pipeline_version: version of the current pipeline.
+            climb_id: current sample ID, parsed from payload
+            uuid: job id, parsed from payload
+
+            onyx_versions_hash: part of the upstream context - set only with
+                instance method set_upstream_context_hash().
+            orange_box_version: part of the upstream context - not set on init.
+
+        Raises:
+            ValueError: If the payload is missing required fields.
+        """
+        # shared attributes:
+        self.payload: dict[str, Any] = payload
+        self.server: str = server
+        self.pipeline_version: str = pipeline_version
+
+        self.climb_id: str
+        self.uuid: str
+
+        self.onyx_versions_hash: str | Any
+        self.orange_box_version: str | Any
+
+        try:
+            self.climb_id = self.payload["climb_id"]
+            self.job_uuid = self.payload["match_uuid"]
+        except KeyError as k:
+            raise ValueError(f"Message missing {k}") from k
+
+    def set_upstream_context_hash(self) -> None:
+        """
+        Query Onyx for the upstream context and calculate the hash, store in
+        attribute.
+
+        Raises:
+            - RuntimeError - if onyx cannot be reached.
+        """
+        from onyx_analysis_helper import onyx_analysis_helper_functions as oa
+
+        _, current_onyx_versions, exitcode = (
+            oa.get_data_and_versions_from_onyx(
+                sample_id=self.climb_id,
+                server=self.server,
+                fields=["climb_id"],
+            )
+        )
+
+        if exitcode != 0:
+            logger.error(
+                "Cannot query Onyx for upstream context, see previous "
+                "logs for reason."
+            )
+            raise RuntimeError(
+                "Onyx cannot be queried for upstream context - check logs."
+            )
+
+        self.current_onyx_hash = oa._calculate_versions_hash(
+            current_onyx_versions
+        )
 
 
 class Pipeline(ABC):
@@ -25,8 +88,7 @@ class Pipeline(ABC):
     """
 
     def __init__(self, config: PipelineConfig) -> None:
-        self.config = config
-        self.current_onyx_hash: str
+        self.config: PipelineConfig = config
 
     @property
     def proc_names(self) -> dict[str, list[int]]:
@@ -57,8 +119,19 @@ class Pipeline(ABC):
             OSError: If the samplesheet fails to write.
         """
 
-    # def build_context() -> PipelineContext:
-    #     pass
+    def build_context(self, payload: Any, server: str) -> PipelineContext:
+        """
+        Build the context for the pipeline.
+        Overwrite this class to add additional attributes for the context.
+
+        Returns: PipelineContext object.
+
+        """
+        return PipelineContext(
+            payload=payload,
+            server=server,
+            pipeline_version=self.config.version,
+        )
 
     def _check_paths(self) -> None:
         """Logs warnings for missing configured paths."""
@@ -157,43 +230,16 @@ class Pipeline(ABC):
         except FileNotFoundError:
             return False
 
-    def get_upstream_context_hash(self, sample_id: str) -> None:
-        """
-        Query Onyx for the upstream context and calculate the hash, store in
-        attribute.
-        """
-        _, current_onyx_versions, exitcode = (
-            oa.get_data_and_versions_from_onyx(
-                sample_id=sample_id,
-                server=GlobalConfig.server,
-                fields=["climb_id"],
-            )
-        )
-
-        if exitcode != 0:
-            logger.error(
-                "Cannot query Onyx for upstream context, see previous logs for reason."
-            )
-            raise RuntimeError(  # TODO is this the right kind of error?
-                "Onyx cannot be queries for upstream context - check logs. Exiting"
-            )
-
-        # TODO - need to handle this better - if can't get to onyx, can't get upstream versions.
-        # Might need to split the exitcodes from the onyxanalysis helper. Timeout could sleep and retry.
-
-        self.current_onyx_hash = oa._calculate_versions_hash(
-            current_onyx_versions
-        )
-
-    def should_run(self, sample_id: str) -> bool:
+    def should_run(self, context: PipelineContext) -> bool:
         """Determine whether the pipeline should run for the given sample.
 
-        The default implementation always returns True. Override this to implement
+        The default implementation will return true. Override this to implement
         decision logic based on sample metadata.
         When this returns False, the worker calls `on_skip()` instead of launching the pipeline.
 
         Arguments:
-            sample_id: Identifier provided by the upstream system.
+            PipelineContext object: instance of the PipelineObject that houses
+            attributes for
 
         Returns:
             `True` when the pipeline should run, otherwise `False`.
@@ -362,13 +408,3 @@ class Pipeline(ABC):
                 },
             },
         }
-
-
-# class PathChar(Pipeline):
-#     def build_context():
-#         #super().build_context()
-#         # build from payload
-#         pass
-
-#     #def should_run() -> bool:
-#     #    pass
