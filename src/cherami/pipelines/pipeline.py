@@ -411,3 +411,46 @@ class Pipeline(ABC):
                 },
             },
         }
+
+
+class PathCharPipeline(Pipeline):
+    """Template Pipeline object for pathogen characterisation pipelines
+    (PathChars)."""
+
+    def build_context(self, payload: Any) -> PipelineContext:
+        """
+        Overwrite the build_context function. Get the orange_box_version from
+        the payload and get the current onyx context. Compare the current onyx
+        context with the payload, if these do not match, exit.
+
+        Raises:
+            RuntimeError: the upstream context cherami sent does not match the
+            current onyx state.
+        """
+
+        context = super().build_context(payload)
+        context.set_upstream_context_hash()
+
+        try:
+            if context.current_onyx_hash != payload["current_onyx_hash"]:
+                logger.debug(
+                    "Onyx state out of sync: current onyx state hash: %s, "
+                    "message hash: %s",
+                    context.current_onyx_hash,
+                    payload["current_onyx_hash"],
+                )
+                raise RuntimeError(
+                    "Uncertain if the current onyx state matches the upstream "
+                    "context the cherami state. Cannot proceed."
+                )
+        except KeyError as k:
+            raise ValueError(
+                "Orange box version not available in the message payload, "
+                "cannot decipher upstream context."
+            ) from k
+
+        context.orange_box_version = self.config.version
+        return context
+
+    def should_run(self, context: PipelineContext) -> bool:
+        return True
