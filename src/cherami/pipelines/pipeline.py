@@ -6,7 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from cherami.config import PipelineConfig
+from cherami.config import GlobalConfig, PipelineConfig
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +87,11 @@ class Pipeline(ABC):
     Subclasses must implement `generate_samplesheet` and may override other methods.
     """
 
-    def __init__(self, config: PipelineConfig) -> None:
+    def __init__(
+        self, config: PipelineConfig, global_config: GlobalConfig
+    ) -> None:
         self.config: PipelineConfig = config
+        self.global_config: GlobalConfig = global_config
 
     @property
     def proc_names(self) -> dict[str, list[int]]:
@@ -119,7 +122,7 @@ class Pipeline(ABC):
             OSError: If the samplesheet fails to write.
         """
 
-    def build_context(self, payload: Any, server: str) -> PipelineContext:
+    def build_context(self, payload: Any) -> PipelineContext:
         """
         Build the context for the pipeline.
         Overwrite this class to add additional attributes for the context.
@@ -129,7 +132,7 @@ class Pipeline(ABC):
         """
         return PipelineContext(
             payload=payload,
-            server=server,
+            server=self.global_config.server,
             pipeline_version=self.config.version,
         )
 

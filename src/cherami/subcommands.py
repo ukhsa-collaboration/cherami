@@ -33,12 +33,10 @@ def serve(
     config: CheramiConfig = load_config(config_path)
 
     pipeline_module = load_pipeline_module(config.pipeline_config.name)
-    worker_config = config.worker_config
-    logger.debug("Worker config: %s", worker_config)
+    logger.debug("Worker config: %s", config.worker_config)
     worker_work_dir, worker_output_dir = config.pipeline_dirs()
     worker = pipeline_module.build_worker(
-        worker_config,
-        config.pipeline_config,
+        config,
         worker_work_dir,
         worker_output_dir,
         audit_db_path=audit_db,
@@ -93,10 +91,13 @@ def evaluate(
     log_level = click_context.obj["log_level"]
     init_logging(log, log_level)
 
-    config = load_config(config_path)
+    config: CheramiConfig = load_config(config_path)
     pipeline_module = load_pipeline_module(config.pipeline_config.name)
-    pipeline = pipeline_module.build_pipeline(config.pipeline_config)
+    pipeline = pipeline_module.build_pipeline(
+        config.pipeline_config, config.global_config
+    )
 
+    # TODO update this to run should_run
     results = {
         sample_id: pipeline.should_run(sample_id) for sample_id in sample_ids
     }
