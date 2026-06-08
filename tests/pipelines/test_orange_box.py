@@ -1,24 +1,54 @@
 import csv
+import json
 import logging
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from cherami.config import GlobalConfig, PipelineConfig
+from cherami.config import PipelineConfig
 from cherami.pipelines.orange_box import OrangeBoxPipeline
 
-GlobalConfig.server = "server"
-PipelineConfig.version = "1.2.3"
+PipelineConfig.version = "1.0.0"
 
 
 @pytest.fixture
-def mock_config(mocker):
-    return mocker.Mock()
+def orangebox_config():
+    return PipelineConfig(
+        name="test-orange-box",
+        version="1.2.3",
+        path="orange_box/main.nf",
+        cpus=1,
+        mem="1G",
+        cpu_limit=2,
+        mem_limit="2G",
+        nf_config_path=Path("/idont/exist/nf.config"),
+        nf_profiles=["test"],
+        nf_extra_args=["--blah"],
+        namespace="imafake-ns",
+        container="nextflow/nextflow:latest",
+        backoff_limit=0,
+        max_attempts=2,
+        retry_timeout=300,
+        job_timeout=3600,
+    )
 
 
 @pytest.fixture
-def orange_box_pipeline(mock_config):
-    return OrangeBoxPipeline(mock_config)
+def orange_box_pipeline(orangebox_config, global_config):
+    return OrangeBoxPipeline(orangebox_config, global_config)
+
+
+class MockMessage:
+    def __init__(self, body):
+        self.body = body
+
+
+@pytest.fixture
+def message():
+    payload = {"climb_id": "C123ABC", "match_uuid": "JOB123", "test": "test"}
+    test_message = MockMessage(body=json.dumps(payload))
+    return test_message
 
 
 def test_generate_samplesheet_success(tmp_path, orange_box_pipeline):
@@ -48,272 +78,107 @@ def test_generate_samplesheet_empty_fail(tmp_path, orange_box_pipeline):
         )
 
 
-# set up some data to patch into onyx queries:
-
-## Mock the main onyx query, from which get the record and versions.
-MOCK_ONYX_RECORD_OLD: dict[str, str | dict] = {
-    "climb_id": "ID-123456",
-    "site": "test",
-    "published_date": "2026-01-01",
-    "data": {"datapoint1": 1, "datapoint2": 2, "datapoint3": 3},
-    "classifier_version": "1.0.0",
-    "classifier_db_date": "1970-01-01",
-    "ncbi_taxonomy_date": "1970-01-01",
-    "scylla_version": "1.0.0",
-    "sylph_db_version": "1.0.0",
-    "alignment_db_version": "1.0.0",
-}
-
-MOCK_ONYX_RECORD_OLD_NEW_CLASSIFIER: dict[str, str | dict] = {
-    "climb_id": "ID-123456",
-    "site": "test",
-    "published_date": "2026-01-01",
-    "data": {"datapoint1": 1, "datapoint2": 2, "datapoint3": 3},
-    "classifier_version": "2.0.0",  # classifier has been bumped to v2
-    "classifier_db_date": "2000-01-01",  # uses a new db too
-    "ncbi_taxonomy_date": "1970-01-01",
-    "scylla_version": "1.0.0",
-    "sylph_db_version": "1.0.0",
-    "alignment_db_version": "1.0.0",
-}
-
-# Mock the analysis records - these are returned by client.analyses
-MOCK_ANALYSIS_RECORD = [
-    {
-        "published_date": "1970-01-01",
-        "site": "test",
-        "analysis_id": "AID-12345678",
-        "analysis_date": "1970-01-01",
-        "name": "test-analysis",
-        "report": "",
-        "outputs": "path/to/outputs/file.json",
-    }
-]
-
-ANOTHER_MOCK_ANALYSIS_RECORD = [
-    {
-        "published_date": "1970-01-02",
-        "site": "test-the-second",
-        "analysis_id": "AID-89012345",
-        "analysis_date": "1970-01-02",
-        "name": "test-analysis",
-        "report": "",
-        "outputs": "path/to/file_2.json",
-    }
-]
-
-## Mock the analysis table results - these are returned by client.get_analysis
-MOCK_ANALYSIS_TABLE = {
-    "name": "test-analysis",
-    "description": "This is a test analysis",
-    "analysis_date": "1970-01-01",
-    "pipeline_name": "test-pipeline",
-    "pipeline_url": "test-pipeline-url",
-    "pipeline_version": "0.1.0",
-    "result": "test result",
-    "upstream_analyses": [],
-    "report": "",
-    "outputs": "path/to/outputs/file.json",
-    "methods": {
-        "versions": [
-            {"name": "classifier_version", "version": "1.0.0"},  # onyx version
-            {
-                "name": "classifier_db_date",
-                "version": "1970-01-01",
-            },  # onyx version
-            {
-                "name": "ncbi_taxonomy_date",
-                "version": "1970-01-01",
-            },  # onyx version
-            {"name": "scylla_version", "version": "1.0.0"},  # onyx version
-            {"name": "sylph_db_version", "version": "1.0.0"},  # onyx version
-            {
-                "name": "alignment_db_version",
-                "version": "1.0.0",
-            },  # onyx version
-            {"name": "module_dependency_db", "version": "2000-01-01"},
-            {"name": "orange_box_version", "version": "1.2.3"},
-        ],
-        "onyx_versions_hash": "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614",
-        "thresholds": {"limit": 10},
-    },
-    "result_metrics": {
-        "Example result 1": 9,
-        "Example result 2": "Fail",
-        "Example result 3": 0.3,
-    },
-    "synthscape_records": ["ID-123456789"],
-    "identifiers": [],
-    "analysis_id": "AID-12345678",
-}
-
-
-# New pipeline and new orange box version, plus new classifier version, causes sample to 'pass' in module now.
-ANOTHER_MOCK_ANALYSIS_TABLE = {
-    "name": "test-analysis",
-    "description": "This is another test analysis",
-    "analysis_date": "1970-01-02",
-    "pipeline_name": "test-pipeline",
-    "pipeline_url": "test-pipeline-url",
-    "pipeline_version": "0.2.0",  # pipeline version has been bumped
-    "result": "another test result",
-    "upstream_analyses": [],
-    "report": "",
-    "outputs": "path/to/file_2.json",
-    "methods": {
-        "versions": [
-            {
-                "name": "classifier_version",
-                "version": "2.0.0",
-            },  # New classifier! onyx version
-            {
-                "name": "classifier_db_date",
-                "version": "2000-01-01",
-            },  # New db! onyx version
-            {
-                "name": "ncbi_taxonomy_date",
-                "version": "1970-01-01",
-            },  # onyx version
-            {"name": "scylla_version", "version": "1.0.0"},  # onyx version
-            {"name": "sylph_db_version", "version": "1.0.0"},  # onyx version
-            {
-                "name": "alignment_db_version",
-                "version": "1.0.0",
-            },  # onyx version
-            {"name": "module_dependency_db", "version": "2000-01-01"},
-            {
-                "name": "orange_box_version",
-                "version": "1.2.3",
-            },
-        ],
-        "onyx_versions_hash": "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614",
-        "thresholds": {"limit": 10},
-    },
-    "result_metrics": {
-        "Example result 1": 10,
-        "Example result 2": "Pass",  # new classifier, now passes!
-        "Example result 3": 0.5,
-    },
-    "synthscape_records": ["ID-123456789"],
-    "identifiers": [],
-    "analysis_id": "AID-89012345",
-}
-
-CURRENT_ONYX_HASH = (
-    "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614"
-)
-
-NEW_VERSION_ONYX_HASH = (
-    "81929bfff563946f4e5643fe6e3441835d964e48f8476c67723cfec714550be2"
-)
-
-
 @patch(
-    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses",
-    return_value={},
+    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
 )
+def test_orange_box_build_context(
+    mock_onyx, orange_box_pipeline, mock_analysis_1
+):
+    """
+    Tests that the build_context function creates and populates the hash
+    from the onyx query (patched result).
+    """
+    mock_onyx.return_value = mock_analysis_1.onyx_record
+    context = orange_box_pipeline.build_context(mock_analysis_1.payload)
+    assert context.climb_id == "ID-123456"
+    assert context.onyx_versions_hash == mock_analysis_1.onyx_versions_hash
+    assert context.orange_box_version == mock_analysis_1.orange_box_version
+
+
 def test_should_run_no_tables(
-    onyx_versions_query, orange_box_pipeline, caplog
+    orange_box_pipeline,
+    mock_analysis_empty,
+    caplog,
 ):
     """Should run - if not analyses are available."""
-    orange_box_pipeline.current_onyx_hash = CURRENT_ONYX_HASH
-    with caplog.at_level(logging.INFO):
-        assert orange_box_pipeline.should_run("ID-123456")
+    caplog.set_level(logging.DEBUG)
+    with patch(
+        "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+    ) as mock_analysis:
+        mock_analysis.return_value = (mock_analysis_empty.analysis_records, 0)
+
+        assert orange_box_pipeline.should_run(mock_analysis_empty.context)
         assert "has no analysis tables, running orange box" in caplog.text
 
 
-@patch(
-    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get_analysis",
-    return_value=MOCK_ANALYSIS_TABLE.copy(),
-)
-@patch(
-    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses",
-    return_value=MOCK_ANALYSIS_RECORD.copy(),
-)
 def test_should_not_run_matching_upstream_and_ob_version(
-    mocked_analyses,
-    mocked_analysis_table,
     orange_box_pipeline,
+    mock_analysis_1,
     caplog,
 ):
     """Should not run - has same version orange box and has same upstream context."""
-    with caplog.at_level(logging.DEBUG):
-        orange_box_pipeline.current_onyx_hash = CURRENT_ONYX_HASH
-        assert not orange_box_pipeline.should_run("ID-123456")
+    caplog.set_level(logging.DEBUG)
+    with patch(
+        "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+    ) as mock_analysis:
+        mock_analysis.return_value = (mock_analysis_1.analysis_tables, 0)
+        assert not orange_box_pipeline.should_run(mock_analysis_1.context)
         # check warning:
         assert "has up-to-date analysis tables, skipping." in caplog.text
         # check debug:
         assert "Decision: not run." in caplog.text
 
 
-@patch(
-    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get_analysis",
-    return_value=MOCK_ANALYSIS_TABLE.copy(),
-)
-@patch(
-    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses",
-    return_value=MOCK_ANALYSIS_RECORD.copy(),
-)
 def test_should_run_new_orange_box_version(
-    mocked_analyses,
-    mocked_analysis_table,
     orange_box_pipeline,
+    mock_analysis_old_ob,
     caplog,
 ):
     """Should run - has same upstream context BUT old orange box version."""
-    orange_box_pipeline.current_onyx_hash = CURRENT_ONYX_HASH
-    PipelineConfig.version = "2.3.4"
+    caplog.set_level(logging.DEBUG)
 
-    with caplog.at_level(logging.DEBUG):
-        assert orange_box_pipeline.should_run("ID-123456")
+    with patch(
+        "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+    ) as mock_analysis:
+        mock_analysis.return_value = (mock_analysis_old_ob.analysis_tables, 0)
+        orange_box_pipeline.should_run(mock_analysis_old_ob.context)
+        assert orange_box_pipeline.should_run(mock_analysis_old_ob.context)
         assert "Decision: run." in caplog.text
 
 
-@patch(
-    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get_analysis",
-    return_value=MOCK_ANALYSIS_TABLE.copy(),
-)
-@patch(
-    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses",
-    return_value=MOCK_ANALYSIS_RECORD.copy(),
-)
-def test_should_run_different_upsteam(
-    mocked_analyses,
-    mocked_analysis_table,
+def test_should_run_different_upstream(
     orange_box_pipeline,
+    mock_analysis_2,
     caplog,
 ):
     """Should run - has same orange box version BUT different upstream context."""
-    orange_box_pipeline.current_onyx_hash = NEW_VERSION_ONYX_HASH
-    with caplog.at_level(logging.DEBUG):
-        assert orange_box_pipeline.should_run("ID-123456")
+    caplog.set_level(logging.DEBUG)
+
+    with patch(
+        "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+    ) as mock_analysis:
+        mock_analysis.return_value = (mock_analysis_2.analysis_tables, 0)
+        assert orange_box_pipeline.should_run(mock_analysis_2.context)
         assert "Decision: run." in caplog.text
 
 
-@patch(
-    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get_analysis",
-    side_effect=[
-        MOCK_ANALYSIS_TABLE.copy(),
-        ANOTHER_MOCK_ANALYSIS_TABLE.copy(),
-    ],
-)
-@patch(
-    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.analyses"
-)
 def test_should_run_multiple_analyses_one_match(
-    mocked_analyses,
-    mocked_analysis_table,
     orange_box_pipeline,
+    mock_multiple_analyses,
     caplog,
 ):
     """Should not run - has multiple analysis tables but same orange box version and same
     upstream context."""
-    orange_box_pipeline.current_onyx_hash = NEW_VERSION_ONYX_HASH
-    PipelineConfig.version = "2.3.4"
+    caplog.set_level(logging.DEBUG)
 
-    mocked_analyses.return_value = (
-        MOCK_ANALYSIS_RECORD.copy() + ANOTHER_MOCK_ANALYSIS_RECORD.copy()
-    )
-    with caplog.at_level(logging.DEBUG):
-        assert orange_box_pipeline.should_run("ID-123456")
-        assert "Decision: run." in caplog.text
+    with patch(
+        "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+    ) as mock_analysis:
+        mock_analysis.return_value = (
+            mock_multiple_analyses.analysis_tables,
+            0,
+        )
+        assert not orange_box_pipeline.should_run(
+            mock_multiple_analyses.context
+        )
+        assert "Decision: not run." in caplog.text
