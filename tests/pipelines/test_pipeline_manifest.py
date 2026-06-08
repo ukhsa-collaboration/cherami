@@ -34,8 +34,8 @@ def pipeline_config():
 
 
 @pytest.fixture
-def pipeline(pipeline_config):
-    return TestPipeline(pipeline_config)
+def pipeline(pipeline_config, global_config):
+    return TestPipeline(pipeline_config, global_config)
 
 
 @pytest.fixture
