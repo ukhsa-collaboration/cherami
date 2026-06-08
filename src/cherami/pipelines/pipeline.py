@@ -23,7 +23,7 @@ class PipelineContext:
             server: server for the onyx database
             pipeline_version: version of the current pipeline.
             climb_id: current sample ID, parsed from payload
-            uuid: job id, parsed from payload
+            job_uuid: - The job UUID (match_uuid).
 
             onyx_versions_hash: part of the upstream context - set only with
                 instance method set_upstream_context_hash().
@@ -38,7 +38,7 @@ class PipelineContext:
         self.pipeline_version: str = pipeline_version
 
         self.climb_id: str
-        self.uuid: str
+        self.job_uuid: str
 
         self.onyx_versions_hash: str | Any
         self.orange_box_version: str | Any
@@ -428,30 +428,131 @@ class PathCharPipeline(Pipeline):
             RuntimeError: the upstream context cherami sent does not match the
             current onyx state.
         """
+        # Populate the context object
+        context: PipelineContext = super().build_context(payload)
+        # Add the current onyx versions hash
+        context.onyx_versions_hash: str = context.get_upstream_context_hash()
 
-        context = super().build_context(payload)
-        context.set_upstream_context_hash()
-
+        # Check the current onyx versions hash matches the one sent in the
+        # payload:
         try:
-            if context.current_onyx_hash != payload["current_onyx_hash"]:
+            if context.onyx_versions_hash != payload["onyx_versions_hash"]:
                 logger.debug(
                     "Onyx state out of sync: current onyx state hash: %s, "
                     "message hash: %s",
-                    context.current_onyx_hash,
-                    payload["current_onyx_hash"],
+                    context.onyx_versions_hash,
+                    payload["onyx_versions_hash"],
                 )
                 raise RuntimeError(
-                    "Uncertain if the current onyx state matches the upstream "
-                    "context the cherami state. Cannot proceed."
+                    "Current onyx state does not match the upstream "
+                    "context of the cherami state. Cannot proceed."
                 )
         except KeyError as k:
             raise ValueError(
-                "Orange box version not available in the message payload, "
+                "Onyx versions hash not available in the message payload, "
                 "cannot decipher upstream context."
             ) from k
 
-        context.orange_box_version = self.config.version
+        context.orange_box_version = payload["orange_box_version"]
         return context
 
     def should_run(self, context: PipelineContext) -> bool:
-        return True
+        from onyx_analysis_helper import onyx_analysis_helper_functions as oa
+
+        # First get all the analysis tables associated with the sample. Keep
+        # only associated analysis tables
+
+        analysis_tables: dict
+        exitcode: int
+        analysis_tables, exitcode = oa.get_analysis_records(
+            sample_id=context.climb_id,
+            server=context.server,
+            fields=["methods", "pipeline_name", "pipeline_version"],
+        )
+
+        # If we cannot get to onyx, exit early
+        if exitcode != 0:
+            logger.error(
+                "Cannot query Onyx for analyses for sample %s.",
+                context.climb_id,
+            )
+            raise RuntimeError("Cannot query onyx - check logs for reasons.")
+
+        # Get the analysis tables associated with the pipeline:
+        pipeline_analysis_tables = {
+            aid: table
+            for aid, table in analysis_tables.items()
+            if table["pipeline_name"] == self.config.name
+        }
+
+        # If there are no analysis tables, just run:
+        if not pipeline_analysis_tables:
+            logger.debug(
+                "Inbound sample %s has no analysis tables for pipeline %s.",
+                context.climb_id,
+                self.config.name,
+            )
+            return True
+
+        # Get a set of the (orange_box_version, onyx_version_hash, pipeline_version) in all
+        # analysis tables
+        upstream_contexts: set[tuple] = set()
+
+        for table in analysis_tables.values():
+            # add onyx versions hashes from analysis tables:
+            onyx_versions_hash: str = table["methods"]["onyx_versions_hash"]
+
+            # Get the orange box version from the analysis tables
+            versions: list[dict] = table["methods"]["versions"]
+            versions_dict: dict = {
+                ver["name"]: ver["version"] for ver in versions
+            }
+            orange_box_version: str | None = versions_dict.get(
+                "orange_box_version"
+            )
+            pipeline_version = table["pipeline_version"]
+
+            upstream_contexts.add(
+                (onyx_versions_hash, orange_box_version, pipeline_version)
+            )
+
+        # Make the current tuple to compare:
+        current_context: tuple[str | Any, str | Any, str | Any] = (
+            context.onyx_versions_hash,
+            context.orange_box_version,
+            context.pipeline_version,
+        )
+        info: dict[str, str | Any] = dict(
+            zip(
+                ("hash", "orange box version", "pipeline version"),
+                current_context,
+                strict=True,
+            )
+        )
+        if current_context in upstream_contexts:
+            # do not rerun if previous upstream context matches current context
+            logger.warning(
+                "Sample %s has up-to-date analysis tables for pipeline %s, "
+                "skipping.",
+                context.climb_id,
+                self.config.name,
+            )
+            logger.debug(
+                "Inbound sample %s has analysis IDs %s. Analysis tables "
+                "are up-to-date - current upstream context %s. "
+                "Decision: not run.",
+                context.climb_id,
+                list(analysis_tables.keys()),
+                info,
+            )
+            return False
+        else:
+            # This combination has not yet been run:
+            logger.debug(
+                "Inbound sample %s has analysis IDs %s. Analysis tables "
+                "do not match current upstream context - %s. Decision: run.",
+                context.climb_id,
+                list(analysis_tables.keys()),
+                info,
+            )
+            return True
