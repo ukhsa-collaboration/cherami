@@ -50,8 +50,7 @@ class OrangeBoxPipeline(Pipeline):
         stored on orangebox analysis tables for the current configured
         orangebox version.
         Arguments:
-            sample_id: str, sample id.
-            server: str, must be valid onyx server.
+            context: PipelineContext object, returned from build_context method
         Returns:
             should_run_decision: should run? - bool True for yes False for no.
         """
