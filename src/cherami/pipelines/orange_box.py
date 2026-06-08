@@ -70,6 +70,7 @@ class OrangeBoxPipeline(Pipeline):
             server=context.server,
             fields=["methods"],
         )
+
         # If we cannot get to onyx, exit early
         if exitcode != 0:
             logger.error(
@@ -129,13 +130,13 @@ class OrangeBoxPipeline(Pipeline):
         else:
             # This combination has not yet been run:
             logger.debug(
-                "Inbound sample %s has analysis IDs %s. Analysis tables "
-                "have different orange box version(s) - %s. Current "
+                "Inbound sample %s has analysis IDs %s. Current "
                 "upstream context is %s, which does not match any "
-                "analysis tables. Decision: run.",
+                "analysis tables %s. Decision: run.",
                 context.climb_id,
                 list(analysis_tables.keys()),
                 current_context,
+                upstream_contexts,
             )
             return True
 
@@ -158,7 +159,7 @@ class OrangeBoxWorker(Worker):
         """
         downstream_payload = context.payload.copy()
         # payload should store orange box version and onyx versions hash
-        downstream_payload["upstream_onyx_hash"] = context.current_onyx_hash
+        downstream_payload["onyx_versions_hash"] = context.onyx_versions_hash
         downstream_payload["orange_box_version"] = context.orange_box_version
 
         if self.publish_queue_suffix:
