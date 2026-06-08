@@ -506,6 +506,8 @@ def path_char_pipeline(pipeline_config, global_config):
 def test_pathchar_pipeline_build_context(
     mock_onyx, path_char_pipeline, mock_analysis_1
 ):
+    """Test that pathchar build_context adds orange box version and hash from
+    payload to context object."""
     mock_onyx.return_value = mock_analysis_1.onyx_record
     mock_analysis_1.payload.update(
         {
@@ -530,6 +532,7 @@ def test_pathchar_pipeline_build_context(
 def test_pathchar_pipeline_build_context_mismatch_hash(
     mock_onyx, path_char_pipeline, mock_analysis_1
 ):
+    """Test that pathchar build_context exits if hashes don't match."""
     mock_onyx.return_value = mock_analysis_1.onyx_record
     mock_analysis_1.payload.update(
         {
@@ -548,6 +551,7 @@ def test_pathchar_pipeline_build_context_mismatch_hash(
 def test_pathchar_pipeline_build_context_incomplete_payload(
     mock_onyx, path_char_pipeline, mock_analysis_1
 ):
+    """Check pathchar build context raises valueerror if incomplete payload."""
     mock_onyx.return_value = mock_analysis_1.onyx_record
     payload = {
         "climb_id": "C123ABC",
@@ -559,9 +563,10 @@ def test_pathchar_pipeline_build_context_incomplete_payload(
 
 
 def test_pathchar_should_run_true(
-    path_char_pipeline,
-    mock_analysis_empty,
+    path_char_pipeline, mock_analysis_empty, caplog
 ):
+    """Check that if there are no analysis records, should_run returns true"""
+    caplog.set_level(logging.DEBUG)
     with patch(
         "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
     ) as mock_analysis:
@@ -570,36 +575,37 @@ def test_pathchar_should_run_true(
             mock_analysis_empty.payload, "server", "2.2.2"
         )
         assert path_char_pipeline.should_run(context)
+        assert "has no analysis tables for pipeline" in caplog.text
 
 
 def test_pathchar_should_run_false(
     path_char_pipeline, mock_analysis_1, caplog
 ):
-    """Analysis table present with matching upstream context and pipeline version."""
+    """
+    Check should_run returns false when analysis table present with matching
+    upstream context and pipeline version.
+    """
     caplog.set_level(logging.DEBUG)
     with patch(
         "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
     ) as mock_analysis:
         mock_analysis.return_value = mock_analysis_1.analysis_tables, 0
-        context = PipelineContext(mock_analysis_1.payload, "server", "1.0.0")
-        context.onyx_versions_hash = mock_analysis_1.onyx_versions_hash
-        context.orange_box_version = "1.2.3"
-        assert not path_char_pipeline.should_run(context)
+        assert not path_char_pipeline.should_run(mock_analysis_1.context)
         assert "Decision: not run." in caplog.text
 
 
-def test_pathchar_should_run_new_orangebox(
+def test_pathchar_should_run_new_orange_box(
     mock_analysis_1, path_char_pipeline, caplog
 ):
+    """Check should_run runs if new orange box version."""
     caplog.set_level(logging.DEBUG)
     with patch(
         "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
     ) as mock_analysis:
         mock_analysis.return_value = mock_analysis_1.analysis_tables, 0
-        context = PipelineContext(mock_analysis_1.payload, "server", "1.0.0")
-        context.onyx_versions_hash = mock_analysis_1.onyx_versions_hash
-        context.orange_box_version = "2.0.0"
-        assert path_char_pipeline.should_run(context)
+        # update just the orange box version in the mocked context object:
+        mock_analysis_1.context.orange_box_version = "2.0.0"
+        assert path_char_pipeline.should_run(mock_analysis_1.context)
         assert "Decision: run." in caplog.text
 
 
@@ -611,33 +617,31 @@ def test_pathchar_should_run_new_onyx_hash(
         "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
     ) as mock_analysis:
         mock_analysis.return_value = mock_analysis_1.analysis_tables, 0
-        context = PipelineContext(mock_analysis_1.payload, "server", "1.0.0")
-        context.onyx_versions_hash = (
-            "abc123"  # this would be the new hash calculated
-        )
-        context.orange_box_version = "1.2.3"
-        assert path_char_pipeline.should_run(context)
+        # overwrite in mock test object - this would be the new hash calculated
+        mock_analysis_1.context.onyx_versions_hash = "abc123"
+
+        assert path_char_pipeline.should_run(mock_analysis_1.context)
         assert "Decision: run." in caplog.text
 
 
 def test_pathchar_should_run_new_pathchar(
     mock_analysis_1, path_char_pipeline, caplog
 ):
+    """Check should_run will run if pathchar version bumped."""
     caplog.set_level(logging.DEBUG)
     with patch(
         "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
     ) as mock_analysis:
         mock_analysis.return_value = mock_analysis_1.analysis_tables, 0
-        context = PipelineContext(
-            mock_analysis_1.payload, "server", "2.0.0"
-        )  # new version
-        context.onyx_versions_hash = mock_analysis_1.onyx_versions_hash
-        context.orange_box_version = "1.2.3"
-        assert path_char_pipeline.should_run(context)
+        # Change the pipeline version in the mocked context object
+        mock_analysis_1.context.pipeline_version = "2.0.0"
+        assert path_char_pipeline.should_run(mock_analysis_1.context)
         assert "Decision: run." in caplog.text
 
 
-def test_test(mock_multiple_analyses, path_char_pipeline, caplog):
+def test_pathchar_should_run_many_tables(
+    mock_multiple_analyses, path_char_pipeline, caplog
+):
     """
     Should_run - sample has matching analysis table for pipeline with old
     context and an analysis table with the next context but not from the
@@ -648,10 +652,5 @@ def test_test(mock_multiple_analyses, path_char_pipeline, caplog):
         "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
     ) as mock_analysis:
         mock_analysis.return_value = mock_multiple_analyses.analysis_tables, 0
-        context = PipelineContext(
-            mock_multiple_analyses.payload, "server", "2.0.0"
-        )  # new version
-        context.onyx_versions_hash = mock_multiple_analyses.onyx_versions_hash
-        context.orange_box_version = "1.2.3"
-        assert path_char_pipeline.should_run(context)
+        assert path_char_pipeline.should_run(mock_multiple_analyses.context)
         assert "Decision: run." in caplog.text

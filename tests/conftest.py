@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 import pytest
 
+from cherami.pipelines.pipeline import PipelineContext
+
 os.environ["ONYX_DOMAIN"] = "Placeholder domain"
 os.environ["ONYX_TOKEN"] = "Placeholder token"
 
@@ -17,6 +19,14 @@ class MockedSample:
     analysis_tables: dict
     orange_box_version: str
     payload: dict
+    context: PipelineContext
+
+
+class MockContext(PipelineContext):
+    def __init__(self, payload, server, pipeline_version, onyx_hash):
+        super().__init__(payload, server, pipeline_version)
+        self.onyx_versions_hash = onyx_hash
+        self.orange_box_version = "1.2.3"
 
 
 ONYX_RECORD = {
@@ -33,9 +43,7 @@ ONYX_RECORD = {
 }
 """Mocked onyx client.get response using old onyx format."""
 
-ONYX_VERSIONS_HASH = (
-    "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614"
-)
+ONYX_HASH = "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614"
 """hash of the onyx versions in ONYX_RECORD."""
 
 ANALYSIS_RECORD = [
@@ -103,6 +111,12 @@ ANALYSIS_TABLE = {
 }
 """Analysis table associated with the analysis record."""
 
+PAYLOAD: dict[str, str] = {
+    "climb_id": "ID-123456",
+    "match_uuid": "ABC123",
+    "test": "test2",
+}
+
 
 @pytest.fixture
 def mock_analysis_1():
@@ -110,21 +124,23 @@ def mock_analysis_1():
         sample_id="ID-123456",
         analysis_ids=["AID-12345678"],
         onyx_record=ONYX_RECORD,
-        onyx_versions_hash=ONYX_VERSIONS_HASH,
+        onyx_versions_hash=ONYX_HASH,
         analysis_records=ANALYSIS_RECORD,
         analysis_tables={
             "AID-12345678": {
-                "pipeline_name": "test-pipeline",
-                "pipeline_version": "1.0.0",
+                "pipeline_name": ANALYSIS_TABLE["pipeline_name"],
+                "pipeline_version": ANALYSIS_TABLE["pipeline_version"],
                 "methods": ANALYSIS_TABLE["methods"],
             }
         },
         orange_box_version="1.2.3",
-        payload={
-            "climb_id": "ID-123456",
-            "match_uuid": "ABC123",
-            "test": "test2",
-        },
+        payload=PAYLOAD,
+        context=MockContext(
+            PAYLOAD,
+            "server",
+            ANALYSIS_TABLE["pipeline_version"],
+            ONYX_HASH,
+        ),
     )
 
 
@@ -147,7 +163,7 @@ ANALYSIS_TABLE_2 = {
     "analysis_date": "1970-01-02",
     "pipeline_name": "orange_box_module",
     "pipeline_url": "test-pipeline-url",
-    "pipeline_version": "1.0.0",
+    "pipeline_version": "2.0.0",
     "result": "another test result",
     "upstream_analyses": [],
     "report": "",
@@ -208,22 +224,24 @@ def mock_multiple_analyses():
         analysis_records=ANALYSIS_RECORD + ANALYSIS_RECORD_2,
         analysis_tables={
             "AID-12345678": {
-                "pipeline_name": ANALYSIS_TABLE["pipeline_name"],
-                "pipeline_version": ANALYSIS_TABLE["pipeline_version"],
+                "pipeline_name": "test-pipeline",
+                "pipeline_version": "1.0.0",
                 "methods": ANALYSIS_TABLE["methods"],
             },
             "AID-89012345": {
-                "pipeline_name": ANALYSIS_TABLE_2["pipeline_name"],
-                "pipeline_version": ANALYSIS_TABLE_2["pipeline_version"],
+                "pipeline_name": "orange_box_module",
+                "pipeline_version": "2.0.0",
                 "methods": ANALYSIS_TABLE_2["methods"],
             },
         },
         orange_box_version="1.2.3",
-        payload={
-            "climb_id": "ID-123456",
-            "match_uuid": "ABC123",
-            "test": "test2",
-        },
+        payload=PAYLOAD,
+        context=MockContext(
+            PAYLOAD,
+            "server",
+            "1.0.0",
+            onyx_hash=ONYX_HASH_2,
+        ),
     )
 
 
@@ -244,7 +262,7 @@ def mock_analysis_empty():
             "sylph_db_version": "1.0.0",
             "alignment_db_version": "1.0.0",
         },
-        onyx_versions_hash=ONYX_VERSIONS_HASH,  # same hash as same versions
+        onyx_versions_hash=ONYX_HASH,  # same hash as same versions
         analysis_records=[],
         analysis_tables={},
         orange_box_version="1.2.3",
@@ -253,4 +271,14 @@ def mock_analysis_empty():
             "match_uuid": "XXX000",
             "test": "test2",
         },
+        context=MockContext(
+            payload={
+                "climb_id": "ID-000000",
+                "match_uuid": "XXX000",
+                "test": "test2",
+            },
+            server="server",
+            pipeline_version="1.0.0",
+            onyx_hash=ONYX_HASH,
+        ),
     )
