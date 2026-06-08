@@ -11,8 +11,8 @@ def mock_config(mocker):
 
 
 @pytest.fixture
-def amr_pipeline(mock_config):
-    pipeline = AmrPipeline(mock_config)
+def amr_pipeline(mock_config, global_config):
+    pipeline = AmrPipeline(mock_config, global_config)
     return pipeline
 
 
