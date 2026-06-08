@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from unittest.mock import patch
 
@@ -5,16 +6,17 @@ import pytest
 
 from cherami.config import GlobalConfig, PipelineConfig
 from cherami.pipelines import Pipeline
-from cherami.pipelines.pipeline import PipelineContext
+from cherami.pipelines.pipeline import PathCharPipeline, PipelineContext
 
 
 class DummyPipeline(Pipeline):
     def __init__(
         self,
         config: PipelineConfig,
+        global_config: GlobalConfig,
         proc_names: dict[str, list[int]] | None = None,
     ):
-        super().__init__(config)
+        super().__init__(config, global_config)
         self._proc_names = proc_names or {}
 
     @property
@@ -48,14 +50,27 @@ def pipeline_config():
 
 
 @pytest.fixture
-def pipeline(pipeline_config):
-    return DummyPipeline(config=pipeline_config)
+def global_config():
+    return GlobalConfig(
+        work_dir=Path("test/work/dir"),
+        output_dir=Path("test/output/dir"),
+        server="server",
+    )
 
 
 @pytest.fixture
-def pipeline_proc_names(pipeline_config):
+def pipeline(pipeline_config, global_config):
+    return DummyPipeline(config=pipeline_config, global_config=global_config)
+
+
+@pytest.fixture
+def pipeline_proc_names(pipeline_config, global_config):
     proc_names = {"NFCORE_DEMO:DEMO:FASTQC (SAMPLE1_PE)": [0, 5]}
-    return DummyPipeline(config=pipeline_config, proc_names=proc_names)
+    return DummyPipeline(
+        config=pipeline_config,
+        global_config=global_config,
+        proc_names=proc_names,
+    )
 
 
 @pytest.fixture
@@ -444,71 +459,179 @@ def test_eval_exit_status__missing_col_in_file(
     assert "Expected to find column 'exit'" in caplog.text
 
 
-## Mock the main onyx query, from which get the record and versions.
-MOCK_ONYX_RECORD_OLD: dict[str, str | dict] = {
-    "climb_id": "ID-123456",
-    "site": "test",
-    "published_date": "2026-01-01",
-    "data": {"datapoint1": 1, "datapoint2": 2, "datapoint3": 3},
-    "classifier_version": "1.0.0",
-    "classifier_db_date": "1970-01-01",
-    "ncbi_taxonomy_date": "1970-01-01",
-    "scylla_version": "1.0.0",
-    "sylph_db_version": "1.0.0",
-    "alignment_db_version": "1.0.0",
-}
-
-CURRENT_ONYX_HASH = (
-    "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614"
-)
-"""This is the hash for the onyx versions in MOCK_ONYX_RECORD_OLD"""
-
-
-@patch(
-    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
-    return_value=MOCK_ONYX_RECORD_OLD,
-)
-def test_pipelinecontext_get_upstream_context_hash(mocked_onyx, pipeline):
-    GlobalConfig.server = "server"
-    pipeline.get_upstream_context_hash("ID-123456")
-    assert pipeline.current_onyx_hash == CURRENT_ONYX_HASH
-
-
-MOCK_ONYX_RECORD_OLD: dict[str, str | dict] = {
-    "climb_id": "ID-123456",
-    "site": "test",
-    "published_date": "2026-01-01",
-    "data": {"datapoint1": 1, "datapoint2": 2, "datapoint3": 3},
-    "classifier_version": "1.0.0",
-    "classifier_db_date": "1970-01-01",
-    "ncbi_taxonomy_date": "1970-01-01",
-    "scylla_version": "1.0.0",
-    "sylph_db_version": "1.0.0",
-    "alignment_db_version": "1.0.0",
-}
-
-CURRENT_ONYX_HASH = (
-    "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614"
-)
-
-
-def test_pipeline_context():
-    payload = {"climb_id": "C123ABC", "match_uuid": "JOB123", "test": "test"}
+def test_pipeline_context(mock_analysis_1):
     context = PipelineContext(
-        payload, server="server", pipeline_version="1.2.3"
+        mock_analysis_1.payload, server="server", pipeline_version="1.2.3"
     )
-    assert context.climb_id == "C123ABC"
-    assert not context.onyx_versions_hash
+    assert context.climb_id == "ID-123456"
+    with pytest.raises(AttributeError):
+        # The onyx_versions_hash doesn't exist until the attr is assigned
+        assert not context.onyx_versions_hash
 
 
 @patch(
     target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
-    return_value=MOCK_ONYX_RECORD_OLD,
 )
-def test_pipeline_context_get_upstream_context_hash(mock_onyx):
-    payload = {"climb_id": "C123ABC", "match_uuid": "JOB123", "test": "test"}
+def test_pipeline_context_get_upstream_context_hash(
+    mock_onyx, mock_analysis_1
+):
+    """
+    This is a spurious test because it really tests that the PipelineContext object
+    is populated from a query. The query result is patched in - this function would
+    fail in production if the query results changed.
+    """
+    mock_onyx.return_value = mock_analysis_1.onyx_record
     context = context = PipelineContext(
-        payload, server="server", pipeline_version="1.2.3"
+        mock_analysis_1.payload, server="server", pipeline_version="1.2.3"
     )
     actual_hash = context.get_upstream_context_hash()
-    assert actual_hash == CURRENT_ONYX_HASH
+    assert actual_hash == mock_analysis_1.onyx_versions_hash
+
+
+class DummyPathCharPipeline(PathCharPipeline):
+    def generate_samplesheet(self, samples, job_id, output_filepath):
+        return
+
+
+@pytest.fixture
+def path_char_pipeline(pipeline_config, global_config):
+    return DummyPathCharPipeline(
+        config=pipeline_config, global_config=global_config
+    )
+
+
+@patch(
+    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get"
+)
+def test_pathchar_pipeline_build_context(
+    mock_onyx, path_char_pipeline, mock_analysis_1
+):
+    mock_onyx.return_value = mock_analysis_1.onyx_record
+    mock_analysis_1.payload.update(
+        {
+            "orange_box_version": "1.2.3",
+            "onyx_versions_hash": mock_analysis_1.onyx_versions_hash,
+        }
+    )
+
+    path_char_context = path_char_pipeline.build_context(
+        mock_analysis_1.payload
+    )
+    assert (
+        path_char_context.onyx_versions_hash
+        == mock_analysis_1.onyx_versions_hash
+    )
+    assert path_char_context.orange_box_version == "1.2.3"
+
+
+@patch(
+    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get"
+)
+def test_pathchar_pipeline_build_context_mismatch_hash(
+    mock_onyx, path_char_pipeline, mock_analysis_1
+):
+    mock_onyx.return_value = mock_analysis_1.onyx_record
+    mock_analysis_1.payload.update(
+        {
+            "orange_box_version": "1.2.3",
+            "onyx_versions_hash": "123456abcdef",
+        }
+    )
+    with pytest.raises(RuntimeError) as r:
+        path_char_pipeline.build_context(mock_analysis_1.payload)
+    assert "Current onyx state does not match the upstream" in str(r.value)
+
+
+@patch(
+    target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
+)
+def test_pathchar_pipeline_build_context_incomplete_payload(
+    mock_onyx, path_char_pipeline, mock_analysis_1
+):
+    mock_onyx.return_value = mock_analysis_1.onyx_record
+    payload = {
+        "climb_id": "C123ABC",
+        "match_uuid": "JOB123",
+        "test": "test",
+    }
+    with pytest.raises(ValueError, match="Onyx versions hash not available"):
+        path_char_pipeline.build_context(payload)
+
+
+def test_pathchar_should_run_true(
+    path_char_pipeline,
+    mock_analysis_empty,
+):
+    with patch(
+        "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+    ) as mock_analysis:
+        mock_analysis.return_value = (mock_analysis_empty.analysis_tables, 0)
+        context = PipelineContext(
+            mock_analysis_empty.payload, "server", "2.2.2"
+        )
+        assert path_char_pipeline.should_run(context)
+
+
+def test_pathchar_should_run_false(
+    path_char_pipeline, mock_analysis_1, caplog
+):
+    """Analysis table present with matching upstream context and pipeline version."""
+    caplog.set_level(logging.DEBUG)
+    with patch(
+        "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+    ) as mock_analysis:
+        mock_analysis.return_value = mock_analysis_1.analysis_tables, 0
+        context = PipelineContext(mock_analysis_1.payload, "server", "1.0.0")
+        context.onyx_versions_hash = mock_analysis_1.onyx_versions_hash
+        context.orange_box_version = "1.2.3"
+        assert not path_char_pipeline.should_run(context)
+        assert "Decision: not run." in caplog.text
+
+
+def test_pathchar_should_run_new_orangebox(
+    mock_analysis_1, path_char_pipeline, caplog
+):
+    caplog.set_level(logging.DEBUG)
+    with patch(
+        "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+    ) as mock_analysis:
+        mock_analysis.return_value = mock_analysis_1.analysis_tables, 0
+        context = PipelineContext(mock_analysis_1.payload, "server", "1.0.0")
+        context.onyx_versions_hash = mock_analysis_1.onyx_versions_hash
+        context.orange_box_version = "2.0.0"
+        assert path_char_pipeline.should_run(context)
+        assert "Decision: run." in caplog.text
+
+
+def test_pathchar_should_run_new_onyx_hash(
+    mock_analysis_1, path_char_pipeline, caplog
+):
+    caplog.set_level(logging.DEBUG)
+    with patch(
+        "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+    ) as mock_analysis:
+        mock_analysis.return_value = mock_analysis_1.analysis_tables, 0
+        context = PipelineContext(mock_analysis_1.payload, "server", "1.0.0")
+        context.onyx_versions_hash = (
+            "abc123"  # this would be the new hash calculated
+        )
+        context.orange_box_version = "1.2.3"
+        assert path_char_pipeline.should_run(context)
+        assert "Decision: run." in caplog.text
+
+
+def test_pathchar_should_run_new_pathchar(
+    mock_analysis_1, path_char_pipeline, caplog
+):
+    caplog.set_level(logging.DEBUG)
+    with patch(
+        "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+    ) as mock_analysis:
+        mock_analysis.return_value = mock_analysis_1.analysis_tables, 0
+        context = PipelineContext(
+            mock_analysis_1.payload, "server", "2.0.0"
+        )  # new version
+        context.onyx_versions_hash = mock_analysis_1.onyx_versions_hash
+        context.orange_box_version = "1.2.3"
+        assert path_char_pipeline.should_run(context)
+        assert "Decision: run." in caplog.text
