@@ -457,10 +457,40 @@ class PathCharPipeline(Pipeline):
         return context
 
     def should_run(self, context: PipelineContext) -> bool:
+        """
+        Determine whether the pipeline should run for the given context.
+
+        Override this to implement decision logic for specific pathchar.
+
+        When this returns False, the worker calls `on_skip()` instead of
+        launching the pipeline.
+
+        Default pathogen characteristic pipeline should_run logic.
+        1) query onyx for all available analysis tables
+            - if cannot reach onyx, raise RuntimeError.
+        2) filter this to just pipeline analyses (matches on 'pipeline_name')
+            - if there are none, exit True.
+        3) Gather all the combinations of upstream context and pipeline
+        versions from the analysis tables. Keep as tuple, make a set of these.
+        4) Make the tuple of current upstream context and pipeline version and
+        compare.
+            - if current combination exists, return False.
+            - if current combination does not exist, return True.
+
+        Args:
+            context (PipelineContext): pipeline context object. This should
+            hold the sample id, job id, orange box version, current onyx
+            versions hash and the message payload from upstream.
+
+        Raises:
+            RuntimeError: Onyx cannot be queried for the analysis tables.
+
+        Returns:
+            bool: _description_
+        """
         from onyx_analysis_helper import onyx_analysis_helper_functions as oa
 
-        # First get all the analysis tables associated with the sample. Keep
-        # only associated analysis tables
+        # 1) get all the analysis tables associated with the sample.
 
         analysis_tables: dict
         exitcode: int
@@ -478,7 +508,7 @@ class PathCharPipeline(Pipeline):
             )
             raise RuntimeError("Cannot query onyx - check logs for reasons.")
 
-        # Get the analysis tables associated with the pipeline:
+        # 2) Get the analysis tables associated with the pipeline:
         pipeline_analysis_tables = {
             aid: table
             for aid, table in analysis_tables.items()
@@ -494,8 +524,8 @@ class PathCharPipeline(Pipeline):
             )
             return True
 
-        # Get a set of the (orange_box_version, onyx_version_hash, pipeline_version) in all
-        # analysis tables
+        # 3) Get a set of the (orange_box_version, onyx_version_hash,
+        # pipeline_version) in all analysis tables
         upstream_contexts: set[tuple] = set()
 
         for table in analysis_tables.values():
@@ -510,13 +540,16 @@ class PathCharPipeline(Pipeline):
             orange_box_version: str | None = versions_dict.get(
                 "orange_box_version"
             )
-            pipeline_version = table["pipeline_version"]
 
             upstream_contexts.add(
-                (onyx_versions_hash, orange_box_version, pipeline_version)
+                (
+                    onyx_versions_hash,
+                    orange_box_version,
+                    table["pipeline_version"],
+                )
             )
 
-        # Make the current tuple to compare:
+        # 4) Make the current tuple to compare:
         current_context: tuple[str | Any, str | Any, str | Any] = (
             context.onyx_versions_hash,
             context.orange_box_version,
