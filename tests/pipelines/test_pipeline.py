@@ -50,15 +50,6 @@ def pipeline_config():
 
 
 @pytest.fixture
-def global_config():
-    return GlobalConfig(
-        work_dir=Path("test/work/dir"),
-        output_dir=Path("test/output/dir"),
-        server="server",
-    )
-
-
-@pytest.fixture
 def pipeline(pipeline_config, global_config):
     return DummyPipeline(config=pipeline_config, global_config=global_config)
 
