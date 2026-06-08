@@ -635,3 +635,23 @@ def test_pathchar_should_run_new_pathchar(
         context.orange_box_version = "1.2.3"
         assert path_char_pipeline.should_run(context)
         assert "Decision: run." in caplog.text
+
+
+def test_test(mock_multiple_analyses, path_char_pipeline, caplog):
+    """
+    Should_run - sample has matching analysis table for pipeline with old
+    context and an analysis table with the next context but not from the
+    pipeline.
+    """
+    caplog.set_level(logging.DEBUG)
+    with patch(
+        "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+    ) as mock_analysis:
+        mock_analysis.return_value = mock_multiple_analyses.analysis_tables, 0
+        context = PipelineContext(
+            mock_multiple_analyses.payload, "server", "2.0.0"
+        )  # new version
+        context.onyx_versions_hash = mock_multiple_analyses.onyx_versions_hash
+        context.orange_box_version = "1.2.3"
+        assert path_char_pipeline.should_run(context)
+        assert "Decision: run." in caplog.text
