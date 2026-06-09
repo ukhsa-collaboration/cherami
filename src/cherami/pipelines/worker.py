@@ -112,7 +112,7 @@ class Worker:
         """
         self._varys_client.acknowledge_message(message)
 
-    def on_success(self, message: Any, payload: dict[str, Any]) -> None:
+    def on_success(self, message: Any, context: PipelineContext) -> None:
         """Handle successful pipeline completions.
 
         Publishes the result to a downstream queue if `publish_queue_suffix` is
@@ -127,19 +127,20 @@ class Worker:
         Args:
             message: The Varys message object associated with the current
                 sample.
-            payload: The message payload to publish downstream.
+            context: the object holding information about the current upstream
+            context.
 
         Raises:
             Exception: If the Varys client fails to publish or acknowledge the
                 message.
         """
-        ## if a worker configured a publish queue, this  send that message to
+        ## if a worker configured a publish queue, this sends that message to
         ## the listen_exchange, unless the worker ALSO configures a
         ## publish_exchange, in which case use that
         if self.publish_queue_suffix:
             target_exchange = self.publish_exchange or self.listen_exchange
             self._varys_client.send(
-                message=payload,
+                message=context.payload,
                 exchange=target_exchange,
                 queue_suffix=self.publish_queue_suffix,
             )
@@ -331,7 +332,7 @@ class Worker:
                         job_uuid,
                     )
 
-                    # wrap in try except for runtimeerror
+                    # TODO wrap in try except for runtimeerror
 
                     # Once we have the message, get the upstream onyx context:
                     upstream_context: PipelineContext = pipeline.build_context(
@@ -480,7 +481,7 @@ class Worker:
                     ## TODO: decide when to actually mark as success - if something fails after the pipeline run but before here,
                     ## then the sample will be retried even though the pipeline itself succeeded and possibly duplicate analysis tables etc
                     ## can we have a check we can add to should_run to see if a characterisation pipeline has already run for this sample
-                    self.on_success(message, payload)
+                    self.on_success(message, upstream_context.payload)
                 except RuntimeError:
                     logger.error("Worker stopping due to pipeline failure")
                     raise
