@@ -141,20 +141,21 @@ class OrangeBoxPipeline(Pipeline):
 
 
 class OrangeBoxWorker(Worker):
-    def on_skip(self, message: Any, context: PipelineContext) -> None:
-        """Handle messages that should be skipped.
+    def on_success(self, message: Any, context: PipelineContext) -> None:
+        """Handle successful orange box pipeline completions.
 
-        Orange box implementation will add the message to the publish queue
-        before acknowledging the message to remove it from the incoming queue.
+        Add upstream context to payload, publish the new message with new
+        payload to downstream queue then acknowledge the original message.
 
         Args:
             message: The Varys message object associated with the current
-            sample.
+                sample.
             context: the object holding information about the current upstream
             context.
 
         Raises:
-            Exception: If the Varys client fails to acknowledge the message.
+            Exception: If the Varys client fails to publish or acknowledge the
+                message.
         """
         downstream_payload = context.payload.copy()
         # payload should store orange box version and onyx versions hash
@@ -169,6 +170,24 @@ class OrangeBoxWorker(Worker):
             )
 
         self._varys_client.acknowledge_message(message)
+
+    def on_skip(self, message: Any, context: PipelineContext) -> None:
+        """Handle messages that should be skipped.
+
+        The same should happen as on success - add the current context to the
+        payload, send new message to publish queue and ack message on listening
+        queue.
+
+        Args:
+            message: The Varys message object associated with the current
+            sample.
+            context: the object holding information about the current upstream
+            context.
+
+        Raises:
+            Exception: If the Varys client fails to acknowledge the message.
+        """
+        self.on_success(message=message, context=context)
 
 
 def build_worker(
