@@ -481,7 +481,7 @@ class Worker:
                     ## TODO: decide when to actually mark as success - if something fails after the pipeline run but before here,
                     ## then the sample will be retried even though the pipeline itself succeeded and possibly duplicate analysis tables etc
                     ## can we have a check we can add to should_run to see if a characterisation pipeline has already run for this sample
-                    self.on_success(message, upstream_context.payload)
+                    self.on_success(message, upstream_context)
                 except RuntimeError:
                     logger.error("Worker stopping due to pipeline failure")
                     raise
