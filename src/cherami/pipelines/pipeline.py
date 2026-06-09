@@ -486,7 +486,7 @@ class PathCharPipeline(Pipeline):
             RuntimeError: Onyx cannot be queried for the analysis tables.
 
         Returns:
-            bool: _description_
+            bool: true or false for should_run.
         """
         from onyx_analysis_helper import onyx_analysis_helper_functions as oa
 
