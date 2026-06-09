@@ -13,7 +13,8 @@ The configuration file consists of three mandatory sections:
 {
   "global": {
     "work_dir": "",
-    "output_dir": ""
+    "output_dir": "",
+    "server": ""
   },
   "pipeline": { },
   "worker": { }
@@ -34,6 +35,7 @@ The configuration file consists of three mandatory sections:
 | --- | --- | --- |
 | `work_dir` | Yes | Root directory for all intermediate files and working directories. |
 | `output_dir` | Yes | Root directory for final published outputs and trace files. |
+| `server` | Yes | The name of the server where Onyx will be queried. |
 
 ## 3. Pipeline Fields
 
@@ -79,7 +81,8 @@ Below is a minimal valid configuration. See `configs/cherami_amr.json` or `confi
 {
   "global": {
     "work_dir": "/path/to/work",
-    "output_dir": "/path/to/output"
+    "output_dir": "/path/to/output",
+    "server": "server"
   },
   "pipeline": {
     "name": "my-pipeline",
@@ -92,7 +95,7 @@ Below is a minimal valid configuration. See `configs/cherami_amr.json` or `confi
     "nf_config_path": "/path/to/nextflow.config",
     "nf_profiles": ["docker"],
     "nf_extra_args": [],
-    "namespace": "my-namespace",
+    "namespace": "my-server-namespace",
     "container": "quay.io/climb-tre/nextflow",
     "backoff_limit": 5,
     "max_attempts": 2,
