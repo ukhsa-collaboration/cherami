@@ -6,7 +6,7 @@ from pathlib import Path
 from onyx import OnyxClient, OnyxConfig
 
 from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
-from cherami.pipelines.pipeline import Pipeline
+from cherami.pipelines.pipeline import PathCharPipeline, PipelineContext
 from cherami.pipelines.worker import Worker
 from cherami.utils import init_onyx
 
@@ -18,7 +18,7 @@ def onyx_config() -> OnyxConfig:
     return init_onyx()
 
 
-class StrepPneumoPipeline(Pipeline):
+class StrepPneumoPipeline(PathCharPipeline):
     @property
     def proc_names(self) -> dict[str, list[int]]:
         """Optional mapping of Nextflow process names to their allowed exit codes.
@@ -84,12 +84,13 @@ class StrepPneumoPipeline(Pipeline):
             output_filepath,
         )
 
-    def should_run(self, sample_id: str) -> bool:
+    def should_run(self, context: PipelineContext) -> bool:
         """Determine whether the Strep pneumo pipeline should run for the given sample.
         When this returns False, the worker calls `on_skip()` instead of launching the pipeline.
 
         Arguments:
-            sample_id: Identifier provided by the upstream system.
+            context: PipleineContext object that contains key information like
+            sample id and server.
 
         Returns:
             `True` when the pipeline should run, otherwise `False`.
@@ -97,8 +98,8 @@ class StrepPneumoPipeline(Pipeline):
         # Get classifer calls info from onyx:
         with OnyxClient(onyx_config()) as client:
             climb_records = client.get(
-                project="synthscape",
-                climb_id=sample_id,
+                project=context.server,
+                climb_id=context.climb_id,
                 include=[
                     "classifier_calls__taxon_id",
                     "classifier_calls__count_descendants",
@@ -116,7 +117,11 @@ class StrepPneumoPipeline(Pipeline):
         # Iterate through list of dicts - return taxon_dict if taxon present, None if taxon not present
         strep_present = next(strep_finder, None)
 
-        return bool(strep_present)
+        if bool(strep_present):
+            should_run_response = super().should_run(context)
+            return should_run_response
+        else:
+            return False
 
 
 def build_worker(
@@ -125,7 +130,7 @@ def build_worker(
     output_dir: Path,
     audit_db_path: Path,
 ) -> Worker:
-    pipeline: Pipeline = build_pipeline(
+    pipeline: PathCharPipeline = build_pipeline(
         config.pipeline_config, config.global_config
     )
     return Worker(
@@ -139,5 +144,5 @@ def build_worker(
 
 def build_pipeline(
     pipeline_config: PipelineConfig, global_config: GlobalConfig
-) -> Pipeline:
+) -> PathCharPipeline:
     return StrepPneumoPipeline(pipeline_config, global_config)
