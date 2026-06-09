@@ -96,9 +96,18 @@ def evaluate(
     pipeline = pipeline_module.build_pipeline(
         config.pipeline_config, config.global_config
     )
+    results = {}
+    for sample_id in sample_ids:
+        payload = {
+            "climb_id": sample_id,
+            "uuid": "",
+            "orange_box_version": "",
+            "onyx_versions_hash": "",
+        }
+        # Need to add orange_box version and onyx_hash
+        pipeline_context = pipeline.build_context(payload)
 
-    # TODO update this to run should_run
-    results = {
-        sample_id: pipeline.should_run(sample_id) for sample_id in sample_ids
-    }
+        # TODO update this to run should_run
+        results[sample_id] = pipeline.should_run(pipeline_context)
+
     click.echo(json.dumps(results, indent=2, sort_keys=False))
