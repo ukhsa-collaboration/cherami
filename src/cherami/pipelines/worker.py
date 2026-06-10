@@ -116,9 +116,7 @@ class Worker:
         """Handle successful pipeline completions.
 
         Publishes the result to a downstream queue if `publish_queue_suffix` is
-        configured, then acknowledges the original message. If
-        `publish_exchange` is not set, it defaults to publishing to the
-        worker's `listen_exchange`.
+        configured, then acknowledges the original message.
         This enables chaining workers where one worker's output queue becomes
         the next worker's input.
 
@@ -135,13 +133,11 @@ class Worker:
                 message.
         """
         ## if a worker configured a publish queue, this sends that message to
-        ## the listen_exchange, unless the worker ALSO configures a
-        ## publish_exchange, in which case use that
+        ## the publish_exchange
         if self.publish_queue_suffix:
-            target_exchange = self.publish_exchange or self.listen_exchange
             self._varys_client.send(
                 message=context.payload,
-                exchange=target_exchange,
+                exchange=self.publish_exchange,
                 queue_suffix=self.publish_queue_suffix,
             )
 
