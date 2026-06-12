@@ -35,7 +35,19 @@ class OrangeBoxPipeline(Pipeline):
         )
 
     def build_context(self, payload: Any) -> PipelineContext:
-        context = super().build_context(payload)
+        """
+        Instantiate the PipelineContext object, and add the
+        onyx_versions_hash and the orange_box_version.
+
+        Arguments:
+            payload: dict, information from the message
+        Returns:
+            context: PipelineContext object.
+        Raises:
+            RuntimeError: if onyx cannot be reached.
+            ValueError: if any of the required fields are not in the payload.
+        """
+        context: PipelineContext = super().build_context(payload)
         context.onyx_versions_hash = context.get_upstream_context_hash()
         context.orange_box_version = self.config.version
         return context
