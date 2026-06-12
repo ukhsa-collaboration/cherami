@@ -81,6 +81,11 @@ def describe(click_context: click.Context, config_path: Path) -> None:
     type=click.Path(dir_okay=False, path_type=Path),
 )
 @click.argument("sample_ids", nargs=-1, required=True)
+@click.argument(
+    "orange_box_version",
+    required=True,
+    help="Orange box version, needed to check for relevant analysis tables.",
+)
 @click.pass_context
 def evaluate(
     click_context: click.Context,
