@@ -86,6 +86,7 @@ def evaluate(
     click_context: click.Context,
     config_path: Path,
     sample_ids: tuple[str, ...],
+    orange_box_version: str,
 ) -> None:
     log = click_context.obj["log"]
     log_level = click_context.obj["log_level"]
@@ -98,16 +99,14 @@ def evaluate(
     )
     results = {}
     for sample_id in sample_ids:
-        payload = {
-            "climb_id": sample_id,
-            "uuid": "",
-            "orange_box_version": "",
-            "onyx_versions_hash": "",
-        }
+        payload = {"climb_id": sample_id, "uuid": ""}
         # Need to add orange_box version and onyx_hash
         pipeline_context = pipeline.build_context(payload)
+        pipeline_context.onyx_versions_hash = (
+            pipeline_context.get_upstream_context_hash()
+        )
+        pipeline_context.orange_box_version = orange_box_version
 
-        # TODO update this to run should_run
         results[sample_id] = pipeline.should_run(pipeline_context)
 
     click.echo(json.dumps(results, indent=2, sort_keys=False))
