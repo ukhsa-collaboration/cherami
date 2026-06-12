@@ -1,0 +1,171 @@
+import logging
+from unittest.mock import patch
+
+import pytest
+
+from cherami.pipelines.strep_pneumo import StrepPneumoPipeline
+
+
+@pytest.fixture
+def mock_config(mocker):
+    return mocker.Mock()
+
+
+@pytest.fixture
+def strep_pipeline(mock_config, global_config):
+    pipeline = StrepPneumoPipeline(mock_config, global_config)
+    return pipeline
+
+
+@pytest.fixture
+def claspar_analysis_table_with_strep():
+    """Analysis table that has high strep present."""
+    return {
+        "AID-12345678": {
+            "name": "claspar-kraken-bacteria",
+            "methods": {
+                "versions": [
+                    {
+                        "name": "classifier_version",
+                        "version": "1.0.0",
+                    },  # onyx version
+                    {
+                        "name": "classifier_db_date",
+                        "version": "1970-01-01",
+                    },  # onyx version
+                    {
+                        "name": "ncbi_taxonomy_date",
+                        "version": "1970-01-01",
+                    },  # onyx version
+                    {
+                        "name": "scylla_version",
+                        "version": "1.0.0",
+                    },  # onyx version
+                    {
+                        "name": "sylph_db_version",
+                        "version": "1.0.0",
+                    },  # onyx version
+                    {
+                        "name": "alignment_db_version",
+                        "version": "1.0.0",
+                    },  # onyx version
+                    {"name": "module_dependency_db", "version": "2000-01-01"},
+                    {"name": "orange_box_version", "version": "1.2.3"},
+                ],
+                "onyx_versions_hash": "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614",
+                "thresholds": {"limit": 10},
+            },
+            "result_metrics": {
+                "0": {
+                    "profile": "test_profile_1",
+                    "profile_taxon_id": 573,
+                    "kraken_confidence": "low",
+                    "profile_taxon_match": "Klebsiella pneumoniae",
+                },
+                "1": {
+                    "profile": "Strep",
+                    "profile_taxon_id": 1313,
+                    "kraken_confidence": "high",
+                    "profile_taxon_match": "Streptococcus pneumoniae",
+                },
+            },
+        }
+    }
+
+
+@patch(
+    "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+)
+# @patch("cherami.pipelines.Pipeline.should_run", return_value=True)
+def test_should_run_high_strep(
+    mock_onyx,
+    strep_pipeline,
+    test_context,
+    claspar_analysis_table_with_strep,
+    caplog,
+):
+    """Should run - strep found and 'high' confidence"""
+    caplog.set_level(logging.DEBUG)
+    test_context.onyx_versions_hash = (
+        "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614"
+    )
+
+    mock_onyx.side_effect = [({}, 0), (claspar_analysis_table_with_strep, 0)]
+
+    assert strep_pipeline.should_run(test_context)
+    assert "Decision: run" in caplog.text
+
+
+@pytest.fixture
+def claspar_analysis_table_with_low_strep(claspar_analysis_table_with_strep):
+    """Analysis table that has high strep present."""
+    low_strep = claspar_analysis_table_with_strep
+    low_strep["AID-12345678"]["result_metrics"]["1"]["kraken_confidence"] = (
+        "low"
+    )
+    return low_strep
+
+
+@patch(
+    "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+)
+# @patch("cherami.pipelines.Pipeline.should_run", return_value=True)
+def test_should_run_low_strep(
+    mock_onyx,
+    strep_pipeline,
+    test_context,
+    claspar_analysis_table_with_low_strep,
+    caplog,
+):
+    """Should not run - strep found but 'low' confidence."""
+    caplog.set_level(logging.DEBUG)
+    test_context.onyx_versions_hash = (
+        "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614"
+    )
+
+    mock_onyx.side_effect = [
+        ({}, 0),
+        (claspar_analysis_table_with_low_strep, 0),
+    ]
+
+    assert not strep_pipeline.should_run(test_context)
+    assert "Decision: not run" in caplog.text
+
+
+@pytest.fixture
+def claspar_analysis_table_no_strep(claspar_analysis_table_with_strep):
+    """Analysis table that has high strep present."""
+    no_strep = claspar_analysis_table_with_strep
+    no_strep["AID-12345678"]["result_metrics"]["1"] = {
+        "profile": "test_profile_1",
+        "profile_taxon_id": 1496,
+        "kraken_confidence": "high",
+        "profile_taxon_match": "Clostridioides difficile",
+    }
+    return no_strep
+
+
+@patch(
+    "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+)
+# @patch("cherami.pipelines.Pipeline.should_run", return_value=True)
+def test_should_run_no_strep(
+    mock_onyx,
+    strep_pipeline,
+    test_context,
+    claspar_analysis_table_no_strep,
+    caplog,
+):
+    """Should not run - no strep found in claspar results."""
+    caplog.set_level(logging.DEBUG)
+    test_context.onyx_versions_hash = (
+        "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614"
+    )
+
+    mock_onyx.side_effect = [
+        ({}, 0),
+        (claspar_analysis_table_no_strep, 0),
+    ]
+
+    assert not strep_pipeline.should_run(test_context)
+    assert "Decision: not run" in caplog.text
