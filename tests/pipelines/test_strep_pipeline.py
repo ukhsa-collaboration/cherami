@@ -169,3 +169,45 @@ def test_should_run_no_strep(
 
     assert not strep_pipeline.should_run(test_context)
     assert "Decision: not run" in caplog.text
+
+
+@patch(
+    "onyx_analysis_helper.onyx_analysis_helper_functions.get_analysis_records",
+)
+def test_how_long_does_it_take(
+    mock_onyx,
+    test_context,
+    strep_pipeline,
+    claspar_analysis_table_with_strep,
+    caplog,
+):
+    """How long does it take if the record has loads of bacteria?."""
+    caplog.set_level(logging.DEBUG)
+    test_context.onyx_versions_hash = (
+        "e0c8c12a02fa86494059858c41af311d94c086a286bf4c62d53c21261e90f614"
+    )
+
+    big_sample = claspar_analysis_table_with_strep
+
+    taxa = {
+        "profile": "test_profile_1",
+        "profile_taxon_id": 123456789,
+        "kraken_confidence": "low",
+        "profile_taxon_match": "some bacteria",
+    }
+    large_results_metrics = {str(i): taxa for i in range(0, 10000)}
+    large_results_metrics["10000"] = {
+        "profile": "Strep",
+        "profile_taxon_id": 1313,
+        "kraken_confidence": "high",
+        "profile_taxon_match": "Streptococcus pneumoniae",
+    }
+    big_sample["AID-12345678"]["result_metrics"] = large_results_metrics
+
+    mock_onyx.side_effect = [
+        ({}, 0),
+        (big_sample, 0),
+    ]
+
+    assert strep_pipeline.should_run(test_context)
+    assert "Decision: run" in caplog.text
