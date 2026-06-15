@@ -40,8 +40,8 @@ class PipelineContext:
         self.climb_id: str
         self.job_uuid: str
 
-        self.onyx_versions_hash: str | Any
-        self.orange_box_version: str | Any
+        self.onyx_versions_hash: str | None = None
+        self.orange_box_version: str | None = None
 
         try:
             self.climb_id = self.payload["climb_id"]
@@ -418,7 +418,7 @@ class PathCharPipeline(Pipeline):
     """Template Pipeline object for pathogen characterisation pipelines
     (PathChars)."""
 
-    def build_context(self, payload: Any) -> PipelineContext:
+    def build_context(self, payload: dict[str, Any]) -> PipelineContext:
         """
         Overwrite the build_context function. Get the orange_box_version from
         the payload and get the current onyx context. Compare the current onyx
@@ -431,10 +431,12 @@ class PathCharPipeline(Pipeline):
         # Populate the context object
         context: PipelineContext = super().build_context(payload)
         # Add the current onyx versions hash
-        context.onyx_versions_hash: str = context.get_upstream_context_hash()
+        context.onyx_versions_hash = context.get_upstream_context_hash()
 
         # Check the current onyx versions hash matches the one sent in the
         # payload:
+        # This checks if state of onyx now is same as in the payload - if
+        # message has sat on the queue for a while it _could_ be out of date.
         try:
             if context.onyx_versions_hash != payload["onyx_versions_hash"]:
                 logger.debug(

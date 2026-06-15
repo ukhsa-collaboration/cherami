@@ -455,9 +455,8 @@ def test_pipeline_context(mock_analysis_1):
         mock_analysis_1.payload, server="server", pipeline_version="1.2.3"
     )
     assert context.climb_id == "ID-123456"
-    with pytest.raises(AttributeError):
-        # The onyx_versions_hash doesn't exist until the attr is assigned
-        assert not context.onyx_versions_hash
+    # The onyx_versions_hash doesn't exist until the attr is assigned
+    assert not context.onyx_versions_hash
 
 
 @patch(
