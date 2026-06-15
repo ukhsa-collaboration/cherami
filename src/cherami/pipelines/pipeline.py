@@ -40,8 +40,8 @@ class PipelineContext:
         self.climb_id: str
         self.job_uuid: str
 
-        self.onyx_versions_hash: str | Any
-        self.orange_box_version: str | Any
+        self.onyx_versions_hash: str | None = None
+        self.orange_box_version: str | None = None
 
         try:
             self.climb_id = self.payload["climb_id"]
