@@ -543,16 +543,19 @@ def test_pathchar_pipeline_build_context_mismatch_hash(
     target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
 )
 def test_pathchar_pipeline_build_context_incomplete_payload(
-    mock_onyx, path_char_pipeline, mock_analysis_1
+    mock_onyx, path_char_pipeline, mock_analysis_1, caplog
 ):
     """Check pathchar build context raises valueerror if incomplete payload."""
+    caplog.set_level(logging.DEBUG)
     mock_onyx.return_value = mock_analysis_1.onyx_record
     payload = {
         "climb_id": "C123ABC",
         "match_uuid": "JOB123",
         "test": "test",
     }
-    with pytest.raises(ValueError, match="Onyx versions hash not available"):
+    with pytest.raises(
+        ValueError, match="not available in the message payload"
+    ):
         path_char_pipeline.build_context(payload)
 
 

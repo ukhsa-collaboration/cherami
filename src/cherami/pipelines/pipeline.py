@@ -12,22 +12,46 @@ logger = logging.getLogger(__name__)
 
 
 class PipelineContext:
-    """Object to store the pipeline context."""
+    """
+    Object to store the metadata and key onyx fields for the pipeline
+    context used to evaluate 'should_run' logic.
+
+    Upstream context is a combination of the onyx_versions_hash and
+    orange_box_version and is NOT set on PipelineContext instantiation.
+
+    The onyx_versions_hash can be calculated using the method
+    get_upstream_context_hash (and then store in the object) or it can be
+    obtained from the message payload if downstream.
+    The orange_box_version is from the pipeline config or the payload.
+
+    It is expected that the context is built using a 'build_context' method to
+    populate the fields from the respective sources. The PipelineContext object
+    should not be stored on the pipeline class.
+
+    Attributes:
+            payload (dict[str, Any]):the json payload sent in the message.
+            server (str): server for the onyx database
+            pipeline_version (str): version of the current pipeline.
+            climb_id (str): current sample ID, parsed from payload
+            job_uuid (str): - The job UUID (match_uuid).
+
+            onyx_versions_hash (str): part of the upstream context,
+                init as None.
+            orange_box_version (str): part of the upstream context,
+                init as None.
+    """
 
     def __init__(
-        self, payload: Any, server: str, pipeline_version: str
+        self, payload: dict[str, Any], server: str, pipeline_version: str
     ) -> None:
         """
-        Attributes:
-            payload: dict of the json payload sent in the message.
-            server: server for the onyx database
-            pipeline_version: version of the current pipeline.
-            climb_id: current sample ID, parsed from payload
-            job_uuid: - The job UUID (match_uuid).
+        Populate pipeline context object.
 
-            onyx_versions_hash: part of the upstream context - set only with
-                instance method set_upstream_context_hash().
-            orange_box_version: part of the upstream context - not set on init.
+        Args:
+            payload (dict[str, Any]): dict of the json payload sent in
+                the message.
+            server (str): server for the onyx database
+            pipeline_version (str): version of the current pipeline.
 
         Raises:
             ValueError: If the payload is missing required fields.
@@ -51,8 +75,8 @@ class PipelineContext:
 
     def get_upstream_context_hash(self) -> str:
         """
-        Query Onyx for the upstream context and calculate the hash, store in
-        attribute.
+        Query Onyx for the current onyx versions, then calculate and return
+        the hash.
 
         Returns:
             - string - onyx versions hash.
@@ -123,10 +147,14 @@ class Pipeline(ABC):
             OSError: If the samplesheet fails to write.
         """
 
-    def build_context(self, payload: Any) -> PipelineContext:
+    def build_context(self, payload: dict[str, Any]) -> PipelineContext:
         """
         Build the context for the pipeline.
-        Overwrite this class to add additional attributes for the context.
+        Overwrite this method to add additional attributes for the context.
+
+        Arguments:
+            payload (dict[str, Any]): dict of the json payload sent in
+                the message.
 
         Returns: PipelineContext object.
 
@@ -449,13 +477,14 @@ class PathCharPipeline(Pipeline):
                     "Current onyx state does not match the upstream "
                     "context of the cherami state. Cannot proceed."
                 )
+            context.orange_box_version = payload["orange_box_version"]
         except KeyError as k:
             raise ValueError(
-                "Onyx versions hash not available in the message payload, "
-                "cannot decipher upstream context."
+                "%s not available in the message payload, "
+                "cannot decipher upstream context.",
+                k,
             ) from k
 
-        context.orange_box_version = payload["orange_box_version"]
         return context
 
     def should_run(self, context: PipelineContext) -> bool:
