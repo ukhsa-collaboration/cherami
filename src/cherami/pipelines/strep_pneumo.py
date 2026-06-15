@@ -132,6 +132,7 @@ class StrepPneumoPipeline(PathCharPipeline):
             ],
         )
 
+        # Get specific claspar tables using analysis_id (aid) as key
         claspar_tables = {
             aid: table
             for aid, table in analysis_tables.items()
@@ -139,7 +140,7 @@ class StrepPneumoPipeline(PathCharPipeline):
         }
 
         # 3.) get the claspar table that matches the current context
-        for aid, table in claspar_tables.items():
+        for analysis_id, table in claspar_tables.items():
             # get onyx versions hashes from analysis tables:
             onyx_versions_hash: str = table["methods"]["onyx_versions_hash"]
 
@@ -165,7 +166,7 @@ class StrepPneumoPipeline(PathCharPipeline):
                             "analysis table (id: %s) with 'high' strep pneumo - "
                             "Decision: run",
                             context.climb_id,
-                            aid,
+                            analysis_id,
                         )
                         return True
                     elif (
@@ -178,7 +179,7 @@ class StrepPneumoPipeline(PathCharPipeline):
                             "analysis table (id: %s) with 'low' strep pneumo - "
                             "Decision: not run",
                             context.climb_id,
-                            aid,
+                            analysis_id,
                         )
                         return False
         logger.debug(
