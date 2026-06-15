@@ -4,7 +4,11 @@ from pathlib import Path
 from typing import Any
 
 from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
-from cherami.pipelines.pipeline import Pipeline, PipelineContext
+from cherami.pipelines.pipeline import (
+    Pipeline,
+    PipelineContext,
+    get_context_from_record,
+)
 from cherami.pipelines.worker import Worker
 
 logger = logging.getLogger(__name__)
@@ -79,7 +83,7 @@ class OrangeBoxPipeline(Pipeline):
         analysis_tables, exitcode = oa.get_analysis_records(
             sample_id=context.climb_id,
             server=context.server,
-            fields=["methods"],
+            fields=["methods", "analysis_id"],
         )
 
         # If we cannot get to onyx, exit early
@@ -105,25 +109,12 @@ class OrangeBoxPipeline(Pipeline):
 
         for analysis_id, table in analysis_tables.items():
             try:
-                # add onyx versions hashes from analysis tables:
-                onyx_versions_hash: str = table["methods"][
-                    "onyx_versions_hash"
-                ]
-
-                # Get the orange box version from the analysis tables
-                versions: list[dict] = table["methods"]["versions"]
-                versions_dict: dict = {
-                    ver["name"]: ver["version"] for ver in versions
-                }
-                orange_box_version: str | None = versions_dict.get(
-                    "orange_box_version"
+                onyx_versions_hash, orange_box_version = (
+                    get_context_from_record(table, analysis_id)
                 )
             except KeyError:
-                logger.warning(
-                    "Analysis record for ID %s does not have onyx hash or "
-                    "orange_box_version.",
-                    analysis_id,
-                )
+                # If get a table without onyx_versions_hash or
+                # orange_box_version, just ignore and check the next table.
                 continue
 
             upstream_contexts.add((onyx_versions_hash, orange_box_version))
