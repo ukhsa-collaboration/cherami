@@ -36,11 +36,22 @@ class MockedSample:
     context: PipelineContext
 
 
-class MockContext(PipelineContext):
+class TestContext(PipelineContext):
     def __init__(self, payload, server, pipeline_version, onyx_hash):
         super().__init__(payload, server, pipeline_version)
         self.onyx_versions_hash = onyx_hash
         self.orange_box_version = "1.2.3"
+
+
+@pytest.fixture
+def test_context():
+    payload = {
+        "climb_id": "ID-123456",
+        "match_uuid": "ABC123",
+        "test": "test2",
+    }
+    context = TestContext(payload, "server", "1.0.0", "")
+    return context
 
 
 ONYX_RECORD = {
@@ -149,7 +160,7 @@ def mock_analysis_1():
         },
         orange_box_version="1.2.3",
         payload=PAYLOAD,
-        context=MockContext(
+        context=TestContext(
             PAYLOAD,
             "server",
             ANALYSIS_TABLE["pipeline_version"],
@@ -210,7 +221,7 @@ def mock_analysis_old_ob():
         },
         orange_box_version="1.2.3",
         payload=PAYLOAD,
-        context=MockContext(
+        context=TestContext(
             PAYLOAD,
             "server",
             ANALYSIS_TABLE["pipeline_version"],
@@ -328,7 +339,7 @@ def mock_multiple_analyses():
         },
         orange_box_version="1.2.3",
         payload=PAYLOAD,
-        context=MockContext(
+        context=TestContext(
             PAYLOAD,
             "server",
             "1.0.0",
@@ -363,7 +374,7 @@ def mock_analysis_empty():
             "match_uuid": "XXX000",
             "test": "test2",
         },
-        context=MockContext(
+        context=TestContext(
             payload={
                 "climb_id": "ID-000000",
                 "match_uuid": "XXX000",
@@ -399,7 +410,7 @@ def mock_analysis_2():
         },
         orange_box_version="1.2.3",
         payload=payload,
-        context=MockContext(
+        context=TestContext(
             payload=payload,
             server="server",
             pipeline_version="1.0.0",
