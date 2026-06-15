@@ -6,6 +6,7 @@ import click
 
 from cherami.config import CheramiConfig, load_config
 from cherami.pipelines import load_pipeline_module
+from cherami.pipelines.pipeline import PipelineContext
 from cherami.utils import init_logging
 
 logger = logging.getLogger(__name__)
@@ -76,16 +77,17 @@ def describe(click_context: click.Context, config_path: Path) -> None:
 
 
 @click.command(name="evaluate")
+@click.option(
+    "--orange_box_version",
+    required=True,
+    help="Orange box version, needed to check for relevant analysis tables.",
+    type=str,
+)
 @click.argument(
     "config_path",
     type=click.Path(dir_okay=False, path_type=Path),
 )
 @click.argument("sample_ids", nargs=-1, required=True)
-@click.argument(
-    "orange_box_version",
-    required=True,
-    help="Orange box version, needed to check for relevant analysis tables.",
-)
 @click.pass_context
 def evaluate(
     click_context: click.Context,
@@ -104,9 +106,13 @@ def evaluate(
     )
     results = {}
     for sample_id in sample_ids:
-        payload = {"climb_id": sample_id, "uuid": ""}
+        pipeline_context = PipelineContext(
+            payload={"climb_id": sample_id, "match_uuid": ""},
+            server=config.global_config.server,
+            pipeline_version=config.pipeline_config.version,
+        )
+
         # Need to add orange_box version and onyx_hash
-        pipeline_context = pipeline.build_context(payload)
         pipeline_context.onyx_versions_hash = (
             pipeline_context.get_upstream_context_hash()
         )
