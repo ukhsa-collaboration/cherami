@@ -6,7 +6,11 @@ from pathlib import Path
 from onyx import OnyxClient, OnyxConfig
 
 from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
-from cherami.pipelines.pipeline import PathCharPipeline, PipelineContext
+from cherami.pipelines.pipeline import (
+    PathCharPipeline,
+    PipelineContext,
+    get_context_from_record,
+)
 from cherami.pipelines.worker import Worker
 from cherami.utils import init_onyx
 
@@ -141,17 +145,14 @@ class StrepPneumoPipeline(PathCharPipeline):
 
         # 3.) get the claspar table that matches the current context
         for analysis_id, table in claspar_tables.items():
-            # get onyx versions hashes from analysis tables:
-            onyx_versions_hash: str = table["methods"]["onyx_versions_hash"]
-
-            # Get the orange box version from the analysis tables
-            versions: list[dict] = table["methods"]["versions"]
-            versions_dict: dict = {
-                ver["name"]: ver["version"] for ver in versions
-            }
-            orange_box_version: str | None = versions_dict.get(
-                "orange_box_version"
-            )
+            try:
+                onyx_versions_hash, orange_box_version = (
+                    get_context_from_record(table, analysis_id)
+                )
+            except KeyError:
+                # If get a table without onyx_versions_hash or
+                # orange_box_version, just ignore and check the next table.
+                continue
 
             if (onyx_versions_hash, orange_box_version) == current_context:
                 # check the results:

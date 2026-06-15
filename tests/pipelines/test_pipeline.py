@@ -6,7 +6,11 @@ import pytest
 
 from cherami.config import GlobalConfig, PipelineConfig
 from cherami.pipelines import Pipeline
-from cherami.pipelines.pipeline import PathCharPipeline, PipelineContext
+from cherami.pipelines.pipeline import (
+    PathCharPipeline,
+    PipelineContext,
+    get_context_from_record,
+)
 
 
 class DummyPipeline(Pipeline):
@@ -644,3 +648,32 @@ def test_pathchar_should_run_many_tables(
         mock_analysis.return_value = mock_multiple_analyses.analysis_tables, 0
         assert path_char_pipeline.should_run(mock_multiple_analyses.context)
         assert "Decision: run." in caplog.text
+
+
+def test_get_context_from_record(mock_analysis_1):
+    onyx_hash, orange_box_version = get_context_from_record(
+        mock_analysis_1.analysis_tables["AID-12345678"], "AID-12345678"
+    )
+    assert onyx_hash == mock_analysis_1.onyx_versions_hash
+    assert orange_box_version == mock_analysis_1.orange_box_version
+
+
+def test_get_context_from_record_keyerror(mock_analysis_1, caplog):
+    """If onyx_hash or orange_box_version doesn't exist in the record then
+    get keyerror and log."""
+    caplog.set_level(logging.WARNING)
+    record_no_context = mock_analysis_1.analysis_tables["AID-12345678"]
+    record_no_context["methods"] = {}
+
+    with pytest.raises(KeyError):
+        assert get_context_from_record(record_no_context, "AID-123456")
+    assert "Analysis record for ID AID-123456 does not have key" in caplog.text
+
+
+def test_get_context_from_record_no_methods(mock_analysis_1, caplog):
+    """If methods is missing, get key error but not logged."""
+    record_no_context = mock_analysis_1.analysis_tables["AID-12345678"]
+    record_no_context.pop("methods")
+
+    with pytest.raises(KeyError):
+        get_context_from_record(record_no_context, "AID-123456")

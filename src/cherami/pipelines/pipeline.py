@@ -499,7 +499,12 @@ class PathCharPipeline(Pipeline):
         analysis_tables, exitcode = oa.get_analysis_records(
             sample_id=context.climb_id,
             server=context.server,
-            fields=["methods", "pipeline_name", "pipeline_version"],
+            fields=[
+                "analysis_id",
+                "methods",
+                "pipeline_name",
+                "pipeline_version",
+            ],
         )
 
         # If we cannot get to onyx, exit early
@@ -530,18 +535,17 @@ class PathCharPipeline(Pipeline):
         # pipeline_version) in all analysis tables
         upstream_contexts: set[tuple] = set()
 
-        for table in analysis_tables.values():
+        for analysis_id, table in pipeline_analysis_tables.items():
             # add onyx versions hashes from analysis tables:
-            onyx_versions_hash: str = table["methods"]["onyx_versions_hash"]
+            try:
+                onyx_versions_hash, orange_box_version = (
+                    get_context_from_record(table, analysis_id)
+                )
+            except KeyError:
+                # If get a table without onyx_versions_hash or
+                # orange_box_version, just ignore and check the next table.
 
-            # Get the orange box version from the analysis tables
-            versions: list[dict] = table["methods"]["versions"]
-            versions_dict: dict = {
-                ver["name"]: ver["version"] for ver in versions
-            }
-            orange_box_version: str | None = versions_dict.get(
-                "orange_box_version"
-            )
+                continue
 
             upstream_contexts.add(
                 (
@@ -591,3 +595,42 @@ class PathCharPipeline(Pipeline):
                 info,
             )
             return True
+
+
+## Additional helper functions
+def get_context_from_record(
+    analysis_record: dict, analysis_id: str
+) -> tuple[str, str]:
+    """
+    Given an onyx analysis record, get the orange_box_version and
+    onyx_versions_hash. The record must at least contain the outer-level keys
+    "methods" and "analysis_id".
+
+    Arguments:
+        analysis_record: dict of one analysis record.
+        analysis_id: str, analysis id
+    Returns:
+        tuple: (onyx_versions_hash, orange_box_version)
+    Raises:
+        KeyError if any of the keys are missing from the record.
+    """
+    methods: dict = analysis_record["methods"]
+    try:
+        # add onyx versions hashes from analysis tables:
+        onyx_versions_hash: str = methods["onyx_versions_hash"]
+
+        # Get the orange box version from the analysis tables
+        versions: list[dict] = methods["versions"]
+        versions_dict: dict = {ver["name"]: ver["version"] for ver in versions}
+        orange_box_version: str = versions_dict["orange_box_version"]
+
+    except KeyError as key:
+        logger.warning(
+            "Analysis record for ID %s does not have key (%s) have onyx hash "
+            "or orange_box_version.",
+            analysis_id,
+            key,
+        )
+        raise
+
+    return onyx_versions_hash, orange_box_version
