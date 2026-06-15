@@ -74,7 +74,7 @@ class OrangeBoxPipeline(Pipeline):
         # because if there are any present, they must have an upstream orange
         # box analysis table to have run to create those tables.
 
-        analysis_tables: dict
+        analysis_tables: dict[str | None, Any | None]
         exitcode: int
         analysis_tables, exitcode = oa.get_analysis_records(
             sample_id=context.climb_id,
@@ -99,25 +99,37 @@ class OrangeBoxPipeline(Pipeline):
             return True
 
         # Get a set of the (orange_box_version, onyx_version_hash) in all
-        # analysis tables
+        # analysis tables - this is the state of onyx + orange box versions run
+        # previously
         upstream_contexts: set[tuple] = set()
 
-        for table in analysis_tables.values():
-            # add onyx versions hashes from analysis tables:
-            onyx_versions_hash: str = table["methods"]["onyx_versions_hash"]
+        for analysis_id, table in analysis_tables.items():
+            try:
+                # add onyx versions hashes from analysis tables:
+                onyx_versions_hash: str = table["methods"][
+                    "onyx_versions_hash"
+                ]
 
-            # Get the orange box version from the analysis tables
-            versions: list[dict] = table["methods"]["versions"]
-            versions_dict: dict = {
-                ver["name"]: ver["version"] for ver in versions
-            }
-            orange_box_version: str | None = versions_dict.get(
-                "orange_box_version"
-            )
+                # Get the orange box version from the analysis tables
+                versions: list[dict] = table["methods"]["versions"]
+                versions_dict: dict = {
+                    ver["name"]: ver["version"] for ver in versions
+                }
+                orange_box_version: str | None = versions_dict.get(
+                    "orange_box_version"
+                )
+            except KeyError:
+                logger.warning(
+                    "Analysis record for ID %s does not have onyx hash or "
+                    "orange_box_version.",
+                    analysis_id,
+                )
+                continue
 
             upstream_contexts.add((onyx_versions_hash, orange_box_version))
 
-        # Make the current tuple to compare:
+        # Make the current tuple to compare - this is the state of Onyx and
+        # orange box version now at time of running:
         current_context: tuple[str | Any, str | Any] = (
             context.onyx_versions_hash,
             context.orange_box_version,
@@ -199,6 +211,8 @@ class OrangeBoxWorker(Worker):
         Raises:
             Exception: If the Varys client fails to acknowledge the message.
         """
+        # skip mimics on_success for the orange box - on_skip still needs to
+        # populate the payload in the message.
         self.on_success(message=message, context=context)
 
 
