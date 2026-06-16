@@ -2,6 +2,8 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 RUN groupadd --system --gid 999 nonroot \
  && useradd --system --gid 999 --uid 999 --create-home nonroot
 
+RUN apt-get update && apt-get install -y --no-install-recommends git
+
 WORKDIR /cherami
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
