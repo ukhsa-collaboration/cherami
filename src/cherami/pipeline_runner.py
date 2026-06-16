@@ -111,6 +111,7 @@ class PipelineRunner:
         trace_file = job_dirs["output_dir"] / "pipeline_trace.txt"
 
         if not trace_file.exists():
+            logger.debug("Cannot find trace file %s", trace_file)
             raise NonRetryablePipelineError("trace_file_missing")
 
         success = pipeline.evaluate_exit_status(trace_file)
