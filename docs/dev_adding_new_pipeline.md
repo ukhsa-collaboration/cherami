@@ -208,5 +208,12 @@ uv run cherami describe path/to/config.json
 **Dry-run decision logic:**
 Evaluates `should_run()` for specific samples without spawning full jobs.
 ```bash
-uv run cherami evaluate path/to/config.json SAMPLE_1 SAMPLE_2
+uv run cherami evaluate --orange_box_version <orange_box_version> path/to/config.json SAMPLE_1 SAMPLE_2
 ```
+If you wish to see the logs that explains the decision logic, use:
+```
+uv run cherami --log_level debug evaluate --orange_box_version <orange_box_version> path/to/config.json SAMPLE_1 SAMPLE_2
+```
+You can provide an orange box version to test whether the current deployment would cause the sample
+to be run, or you can use 'None' or '' which will ignore the orange box version (note that this might
+lead to evaluate returning 'True' but the deployment might return 'False')
