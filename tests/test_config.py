@@ -17,6 +17,7 @@ def valid_global():
     return {
         "work_dir": "/idont/exist/work",
         "output_dir": "/idont/exist/output",
+        "server": "fancyserver",
     }
 
 
@@ -59,6 +60,7 @@ def test_global_config_success(valid_global):
 
     assert config.work_dir == Path("/idont/exist/work")
     assert config.output_dir == Path("/idont/exist/output")
+    assert config.server == "fancyserver"
 
 
 def test_global_config_fail(valid_global):

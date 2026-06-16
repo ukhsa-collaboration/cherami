@@ -6,9 +6,104 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from cherami.config import PipelineConfig
+from cherami.config import GlobalConfig, PipelineConfig
 
 logger = logging.getLogger(__name__)
+
+
+class PipelineContext:
+    """
+    Object to store the metadata and key onyx fields for the pipeline
+    context used to evaluate 'should_run' logic.
+
+    Upstream context is a combination of the onyx_versions_hash and
+    orange_box_version and is NOT set on PipelineContext instantiation.
+
+    The onyx_versions_hash can be calculated using the method
+    get_upstream_context_hash (and then store in the object) or it can be
+    obtained from the message payload if downstream.
+    The orange_box_version is from the pipeline config or the payload.
+
+    It is expected that the context is built using a 'build_context' method to
+    populate the fields from the respective sources. The PipelineContext object
+    should not be stored on the pipeline class.
+
+    Attributes:
+            payload (dict[str, Any]):the json payload sent in the message.
+            server (str): server for the onyx database
+            pipeline_version (str): version of the current pipeline.
+            climb_id (str): current sample ID, parsed from payload
+            job_uuid (str): - The job UUID (match_uuid).
+
+            onyx_versions_hash (str): part of the upstream context,
+                init as None.
+            orange_box_version (str): part of the upstream context,
+                init as None.
+    """
+
+    def __init__(
+        self, payload: dict[str, Any], server: str, pipeline_version: str
+    ) -> None:
+        """
+        Populate pipeline context object.
+
+        Args:
+            payload (dict[str, Any]): dict of the json payload sent in
+                the message.
+            server (str): server for the onyx database
+            pipeline_version (str): version of the current pipeline.
+
+        Raises:
+            ValueError: If the payload is missing required fields.
+        """
+        # shared attributes:
+        self.payload: dict[str, Any] = payload
+        self.server: str = server
+        self.pipeline_version: str = pipeline_version
+
+        self.climb_id: str
+        self.job_uuid: str
+
+        self.onyx_versions_hash: str | None = None
+        self.orange_box_version: str | None = None
+
+        try:
+            self.climb_id = self.payload["climb_id"]
+            self.job_uuid = self.payload["match_uuid"]
+        except KeyError as k:
+            raise ValueError(f"Message missing {k}") from k
+
+    def get_upstream_context_hash(self) -> str:
+        """
+        Query Onyx for the current onyx versions, then calculate and return
+        the hash.
+
+        Returns:
+            - string - onyx versions hash.
+
+        Raises:
+            - RuntimeError - if onyx cannot be reached.
+        """
+        from onyx_analysis_helper import onyx_analysis_helper_functions as oa
+
+        _, current_onyx_versions, exitcode = (
+            oa.get_data_and_versions_from_onyx(
+                sample_id=self.climb_id,
+                server=self.server,
+                fields=["climb_id"],
+            )
+        )
+
+        if exitcode != 0:
+            logger.error(
+                "Cannot query Onyx for upstream context, see previous "
+                "logs for reason."
+            )
+            raise RuntimeError(
+                "Onyx cannot be queried for upstream context - check logs."
+            )
+
+        return oa._calculate_versions_hash(current_onyx_versions)
 
 
 class Pipeline(ABC):
@@ -17,8 +112,11 @@ class Pipeline(ABC):
     Subclasses must implement `generate_samplesheet` and may override other methods.
     """
 
-    def __init__(self, config: PipelineConfig) -> None:
-        self.config = config
+    def __init__(
+        self, config: PipelineConfig, global_config: GlobalConfig
+    ) -> None:
+        self.config: PipelineConfig = config
+        self.global_config: GlobalConfig = global_config
 
     @property
     def proc_names(self) -> dict[str, list[int]]:
@@ -48,6 +146,24 @@ class Pipeline(ABC):
         Raises:
             OSError: If the samplesheet fails to write.
         """
+
+    def build_context(self, payload: dict[str, Any]) -> PipelineContext:
+        """
+        Build the context for the pipeline.
+        Overwrite this method to add additional attributes for the context.
+
+        Arguments:
+            payload (dict[str, Any]): dict of the json payload sent in
+                the message.
+
+        Returns: PipelineContext object.
+
+        """
+        return PipelineContext(
+            payload=payload,
+            server=self.global_config.server,
+            pipeline_version=self.config.version,
+        )
 
     def _check_paths(self) -> None:
         """Logs warnings for missing configured paths."""
@@ -146,15 +262,16 @@ class Pipeline(ABC):
         except FileNotFoundError:
             return False
 
-    def should_run(self, sample_id: str) -> bool:
+    def should_run(self, context: PipelineContext) -> bool:
         """Determine whether the pipeline should run for the given sample.
 
-        The default implementation always returns True. Override this to implement
+        The default implementation will return true. Override this to implement
         decision logic based on sample metadata.
         When this returns False, the worker calls `on_skip()` instead of launching the pipeline.
 
         Arguments:
-            sample_id: Identifier provided by the upstream system.
+            PipelineContext object: instance of the PipelineObject that houses
+            attributes for
 
         Returns:
             `True` when the pipeline should run, otherwise `False`.
@@ -323,3 +440,226 @@ class Pipeline(ABC):
                 },
             },
         }
+
+
+class PathCharPipeline(Pipeline):
+    """Template Pipeline object for pathogen characterisation pipelines
+    (PathChars)."""
+
+    def build_context(self, payload: dict[str, Any]) -> PipelineContext:
+        """
+        Overwrite the build_context function. Get the orange_box_version from
+        the payload and get the current onyx context. Compare the current onyx
+        context with the payload, if these do not match, exit.
+
+        Raises:
+            RuntimeError: the upstream context cherami sent does not match the
+            current onyx state.
+        """
+        # Populate the context object
+        context: PipelineContext = super().build_context(payload)
+        # Add the current onyx versions hash
+        context.onyx_versions_hash = context.get_upstream_context_hash()
+
+        # Check the current onyx versions hash matches the one sent in the
+        # payload:
+        # This checks if state of onyx now is same as in the payload - if
+        # message has sat on the queue for a while it _could_ be out of date.
+        try:
+            if context.onyx_versions_hash != payload["onyx_versions_hash"]:
+                logger.debug(
+                    "Onyx state out of sync: current onyx state hash: %s, "
+                    "message hash: %s",
+                    context.onyx_versions_hash,
+                    payload["onyx_versions_hash"],
+                )
+                raise RuntimeError(
+                    "Current onyx state does not match the upstream "
+                    "context of the cherami state. Cannot proceed."
+                )
+            context.orange_box_version = payload["orange_box_version"]
+        except KeyError as k:
+            raise ValueError(
+                "%s not available in the message payload, "
+                "cannot decipher upstream context.",
+                k,
+            ) from k
+
+        return context
+
+    def should_run(self, context: PipelineContext) -> bool:
+        """
+        Determine whether the pipeline should run for the given context.
+
+        Override this to implement decision logic for specific pathchar.
+
+        When this returns False, the worker calls `on_skip()` instead of
+        launching the pipeline.
+
+        Default pathogen characteristic pipeline should_run logic.
+        1) query onyx for all available analysis tables
+            - if cannot reach onyx, raise RuntimeError.
+        2) filter this to just pipeline analyses (matches on 'pipeline_name')
+            - if there are none, exit True.
+        3) Gather all the combinations of upstream context and pipeline
+        versions from the analysis tables. Keep as tuple, make a set of these.
+        4) Make the tuple of current upstream context and pipeline version and
+        compare.
+            - if current combination exists, return False.
+            - if current combination does not exist, return True.
+
+        Args:
+            context (PipelineContext): pipeline context object. This should
+            hold the sample id, job id, orange box version, current onyx
+            versions hash and the message payload from upstream.
+
+        Raises:
+            RuntimeError: Onyx cannot be queried for the analysis tables.
+
+        Returns:
+            bool: true or false for should_run.
+        """
+        from onyx_analysis_helper import onyx_analysis_helper_functions as oa
+
+        # 1) get all the analysis tables associated with the sample.
+
+        analysis_tables: dict
+        exitcode: int
+        analysis_tables, exitcode = oa.get_analysis_records(
+            sample_id=context.climb_id,
+            server=context.server,
+            fields=[
+                "analysis_id",
+                "methods",
+                "pipeline_name",
+                "pipeline_version",
+            ],
+        )
+
+        # If we cannot get to onyx, exit early
+        if exitcode != 0:
+            logger.error(
+                "Cannot query Onyx for analyses for sample %s.",
+                context.climb_id,
+            )
+            raise RuntimeError("Cannot query onyx - check logs for reasons.")
+
+        # 2) Get the analysis tables associated with the pipeline:
+        pipeline_analysis_tables = {
+            aid: table
+            for aid, table in analysis_tables.items()
+            if table["pipeline_name"] == self.config.name
+        }
+
+        # If there are no analysis tables, just run:
+        if not pipeline_analysis_tables:
+            logger.debug(
+                "Inbound sample %s has no analysis tables for pipeline %s.",
+                context.climb_id,
+                self.config.name,
+            )
+            return True
+
+        # 3) Get a set of the (orange_box_version, onyx_version_hash,
+        # pipeline_version) in all analysis tables
+        upstream_contexts: set[tuple] = set()
+
+        for analysis_id, table in pipeline_analysis_tables.items():
+            # add onyx versions hashes from analysis tables:
+            try:
+                onyx_versions_hash, orange_box_version = (
+                    get_context_from_record(table, analysis_id)
+                )
+            except KeyError:
+                # If get a table without onyx_versions_hash or
+                # orange_box_version, just ignore and check the next table.
+
+                continue
+
+            upstream_contexts.add(
+                (
+                    onyx_versions_hash,
+                    orange_box_version,
+                    table["pipeline_version"],
+                )
+            )
+
+        # 4) Make the current tuple to compare:
+        current_context: tuple[str | Any, str | Any, str | Any] = (
+            context.onyx_versions_hash,
+            context.orange_box_version,
+            context.pipeline_version,
+        )
+        info: dict[str, str | Any] = dict(
+            zip(
+                ("hash", "orange box version", "pipeline version"),
+                current_context,
+                strict=True,
+            )
+        )
+        if current_context in upstream_contexts:
+            # do not rerun if previous upstream context matches current context
+            logger.warning(
+                "Sample %s has up-to-date analysis tables for pipeline %s, "
+                "skipping.",
+                context.climb_id,
+                self.config.name,
+            )
+            logger.debug(
+                "Inbound sample %s has analysis IDs %s. Analysis tables "
+                "are up-to-date - current upstream context %s. "
+                "Decision: not run.",
+                context.climb_id,
+                list(analysis_tables.keys()),
+                info,
+            )
+            return False
+        else:
+            # This combination has not yet been run:
+            logger.debug(
+                "Inbound sample %s has analysis IDs %s. Analysis tables "
+                "do not match current upstream context - %s. Decision: run.",
+                context.climb_id,
+                list(analysis_tables.keys()),
+                info,
+            )
+            return True
+
+
+## Additional helper functions
+def get_context_from_record(
+    analysis_record: dict, analysis_id: str
+) -> tuple[str, str]:
+    """
+    Given an onyx analysis record, get the orange_box_version and
+    onyx_versions_hash. The record must at least contain the outer-level keys
+    "methods" and "analysis_id".
+
+    Arguments:
+        analysis_record: dict of one analysis record.
+        analysis_id: str, analysis id
+    Returns:
+        tuple: (onyx_versions_hash, orange_box_version)
+    Raises:
+        KeyError if any of the keys are missing from the record.
+    """
+    methods: dict = analysis_record["methods"]
+    try:
+        # add onyx versions hashes from analysis tables:
+        onyx_versions_hash: str = methods["onyx_versions_hash"]
+
+        # Get the orange box version from the analysis tables
+        versions: list[dict] = methods["versions"]
+        versions_dict: dict = {ver["name"]: ver["version"] for ver in versions}
+        orange_box_version: str = versions_dict["orange_box_version"]
+
+    except KeyError as key:
+        logger.warning(
+            "Analysis record for ID %s does not have key (%s) have onyx hash "
+            "or orange_box_version.",
+            analysis_id,
+            key,
+        )
+        raise
+
+    return onyx_versions_hash, orange_box_version

@@ -4,15 +4,15 @@ from pathlib import Path
 
 from onyx import OnyxClient
 
-from cherami.config import PipelineConfig, WorkerConfig
-from cherami.pipelines.pipeline import Pipeline
+from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
+from cherami.pipelines.pipeline import PathCharPipeline
 from cherami.pipelines.worker import Worker
 from cherami.utils import init_onyx
 
 logger = logging.getLogger(__name__)
 
 
-class AmrPipeline(Pipeline):
+class AmrPipeline(PathCharPipeline):
     def generate_samplesheet(
         self, samples: list[str], job_id: str, output_filepath: Path
     ) -> None:
@@ -64,15 +64,16 @@ class AmrPipeline(Pipeline):
 
 
 def build_worker(
-    worker_config: WorkerConfig,
-    pipeline_config: PipelineConfig,
+    config: CheramiConfig,
     work_dir: Path,
     output_dir: Path,
     audit_db_path: Path,
 ) -> Worker:
-    pipeline = build_pipeline(pipeline_config)
+    pipeline: PathCharPipeline = build_pipeline(
+        config.pipeline_config, config.global_config
+    )
     return Worker(
-        worker_config,
+        config.worker_config,
         pipeline,
         work_dir,
         output_dir,
@@ -80,5 +81,7 @@ def build_worker(
     )
 
 
-def build_pipeline(pipeline_config: PipelineConfig) -> Pipeline:
-    return AmrPipeline(pipeline_config)
+def build_pipeline(
+    pipeline_config: PipelineConfig, global_config: GlobalConfig
+) -> PathCharPipeline:
+    return AmrPipeline(pipeline_config, global_config)

@@ -6,6 +6,7 @@ import click
 
 from cherami.config import CheramiConfig, load_config
 from cherami.pipelines import load_pipeline_module
+from cherami.pipelines.pipeline import PipelineContext
 from cherami.utils import init_logging
 
 logger = logging.getLogger(__name__)
@@ -33,12 +34,10 @@ def serve(
     config: CheramiConfig = load_config(config_path)
 
     pipeline_module = load_pipeline_module(config.pipeline_config.name)
-    worker_config = config.worker_config
-    logger.debug("Worker config: %s", worker_config)
+    logger.debug("Worker config: %s", config.worker_config)
     worker_work_dir, worker_output_dir = config.pipeline_dirs()
     worker = pipeline_module.build_worker(
-        worker_config,
-        config.pipeline_config,
+        config,
         worker_work_dir,
         worker_output_dir,
         audit_db_path=audit_db,
@@ -78,6 +77,12 @@ def describe(click_context: click.Context, config_path: Path) -> None:
 
 
 @click.command(name="evaluate")
+@click.option(
+    "--orange_box_version",
+    required=True,
+    help="Orange box version, needed to check for relevant analysis tables.",
+    type=str,
+)
 @click.argument(
     "config_path",
     type=click.Path(dir_okay=False, path_type=Path),
@@ -88,16 +93,31 @@ def evaluate(
     click_context: click.Context,
     config_path: Path,
     sample_ids: tuple[str, ...],
+    orange_box_version: str,
 ) -> None:
     log = click_context.obj["log"]
     log_level = click_context.obj["log_level"]
     init_logging(log, log_level)
 
-    config = load_config(config_path)
+    config: CheramiConfig = load_config(config_path)
     pipeline_module = load_pipeline_module(config.pipeline_config.name)
-    pipeline = pipeline_module.build_pipeline(config.pipeline_config)
+    pipeline = pipeline_module.build_pipeline(
+        config.pipeline_config, config.global_config
+    )
+    results = {}
+    for sample_id in sample_ids:
+        pipeline_context = PipelineContext(
+            payload={"climb_id": sample_id, "match_uuid": ""},
+            server=config.global_config.server,
+            pipeline_version=config.pipeline_config.version,
+        )
 
-    results = {
-        sample_id: pipeline.should_run(sample_id) for sample_id in sample_ids
-    }
+        # Need to add orange_box version and onyx_hash
+        pipeline_context.onyx_versions_hash = (
+            pipeline_context.get_upstream_context_hash()
+        )
+        pipeline_context.orange_box_version = orange_box_version
+
+        results[sample_id] = pipeline.should_run(pipeline_context)
+
     click.echo(json.dumps(results, indent=2, sort_keys=False))

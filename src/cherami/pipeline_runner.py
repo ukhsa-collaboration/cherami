@@ -111,6 +111,7 @@ class PipelineRunner:
         trace_file = job_dirs["output_dir"] / "pipeline_trace.txt"
 
         if not trace_file.exists():
+            logger.debug("Cannot find trace file %s", trace_file)
             raise NonRetryablePipelineError("trace_file_missing")
 
         success = pipeline.evaluate_exit_status(trace_file)
@@ -407,10 +408,6 @@ class PipelineRunner:
                 (e.g., trace validation failure).
         """
         job_name = f"{pipeline.config.name}-{job_uuid}"
-        sample_output_dir = worker_output_dir / sample_id
-        completion_marker = sample_output_dir / ".cherami_complete"
-        if completion_marker.exists():
-            raise NonRetryablePipelineError("pipeline_already_completed")
 
         try:
             job = self._get_existing_job(
@@ -444,7 +441,6 @@ class PipelineRunner:
                     pipeline=pipeline,
                     job_dirs=job_dirs,
                 )
-                completion_marker.write_text(job_uuid)
                 logger.info(
                     "Job for %s (%s) completed successfully",
                     sample_id,

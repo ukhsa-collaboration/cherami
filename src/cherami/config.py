@@ -117,6 +117,7 @@ class GlobalConfig:
 
     work_dir: Path
     output_dir: Path
+    server: str
 
     @classmethod
     def from_dict(cls, raw_config: dict[str, Any]) -> Self:
@@ -129,6 +130,7 @@ class GlobalConfig:
             return cls(
                 work_dir=Path(raw_config["work_dir"]),
                 output_dir=Path(raw_config["output_dir"]),
+                server=raw_config["server"],
             )
         except KeyError as error:
             raise ValueError(

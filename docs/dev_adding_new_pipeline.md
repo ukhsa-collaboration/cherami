@@ -31,23 +31,24 @@ Create a new configuration file in `configs/` (e.g., `configs/cherami_my_pipelin
 ```json
 {
   "global": {
-    "work_dir": "/shared/team/projects/downstream_orchestration/work",
-    "output_dir": "/shared/team/projects/downstream_orchestration/output"
+    "work_dir": "/path/to/work/dir",
+    "output_dir": "/path/to/output/dir",
+    "server": "synthscape"
   },
   "pipeline": {
     "name": "my-pipeline",
     "version": "0.1.0",
-    "path": "/shared/team/projects/downstream_orchestration/my-pipeline-repo",
+    "path": "github link to pipeline",
     "cpus": 4,
     "mem": "8G",
     "cpu_limit": 4,
     "mem_limit": "8G",
-    "nf_config_path": "/shared/team/projects/downstream_orchestration/my-pipeline-repo/nextflow.config",
+    "nf_config_path": "my-pipeline-repo/nextflow.config",
     "nf_profiles": [],
     "nf_extra_args": [],
     "namespace": "ns-synthscape-ukhsa",
     "container": "quay.io/climb-tre/nextflow",
-    "backoff_limit": 5,
+    "backoff_limit": 0,
     "max_attempts": 2,
     "retry_timeout": 10,
     "job_timeout": 3600
@@ -67,10 +68,10 @@ Create a new configuration file in `configs/` (e.g., `configs/cherami_my_pipelin
 
 ## 3. Pipeline implementation
 
-Create your characterisation pipeline module in `src/cherami/pipelines/` (e.g., `src/cherami/pipelines/my_pipeline.py`).
+Create your pathogen characterisation (pathchar) pipeline module in `src/cherami/pipelines/` (e.g., `src/cherami/pipelines/my_pipeline.py`).
 
 Your module must export:
-1. A `Pipeline` subclass.
+1. A `PathCharPipeline` subclass.
 2. A `build_pipeline` factory function.
 3. A `build_worker` factory function.
 
@@ -85,7 +86,7 @@ from cherami.pipelines.pipeline import Pipeline
 from cherami.pipelines.worker import Worker
 
 
-class MyPipeline(Pipeline):
+class MyPipeline(PathCharPipeline):
     def generate_samplesheet(
         self, samples: list[str], job_id: str, output_filepath: Path
     ) -> None:
@@ -106,7 +107,7 @@ class MyPipeline(Pipeline):
             writer.writerows(rows)
 
 
-def build_pipeline(pipeline_config: PipelineConfig) -> Pipeline:
+def build_pipeline(pipeline_config: PipelineConfig) -> PathCharPipeline:
     return MyPipeline(pipeline_config)
 
 
@@ -128,20 +129,31 @@ def build_worker(
 
 ## 4. Pipeline Logic & Customisation
 
-The `Pipeline` class implements a function to define the decision logic of the characterisation pipeline.
+The `PathCharPipeline` is a subclass of the Pipeline class. The PathChar class implements a pathchar specific method to define the decision logic of the characterisation pipeline.
 
-### 4.1. Decision logic (`should_run`)
+### 4.1 Upstream context ('build_context')
+This method builds the context object, which is a class that holds key information such as the sample id, uuid, server, payload (information in the payload) and upstream context from the payload (onyx versions hash and orange box version).
+
+At this point, the upstream context from the payload is compared with the current onyx state (through hash comparison),
+and if they do not match, cherami is out of date with the current Onyx state, and the worker exits.
+
+### 4.2. Decision logic (`should_run`)
 Override `should_run(sample_id)` to filter samples before they run. This allows you to say things like "only run the strep pipeline if a sample has > 10 strep reads" for example.
 
 ```python
-def should_run(self, sample_id: str) -> bool:
+def should_run(self, context: PipelineContext) -> bool:
     ## return false to skip a pipeline, true to run it.
-    return check_read_count(sample_id) > 10
+    if check_read_count(sample_id) > 10:
+        return super().should_run(context)
+    else:
+        return False
 ```
+The default `should_run` method for the PathChar pipeline checks for analysis tables that have the combination of the
+current onyx versions hash, the orange box version (both received from the upstream) and the current pipeline version.
 
 If `False`, the worker calls `on_skip()` and acknowledges the message immediately removing it from the message queue.
 
-### 4.2. Nextflow process validation (`proc_names`)
+### 4.3. Nextflow process validation (`proc_names`)
 You can define valid exit codes for specific Nextflow processes. By default, all processes must exit with `0`.
 
 ```python
@@ -196,5 +208,12 @@ uv run cherami describe path/to/config.json
 **Dry-run decision logic:**
 Evaluates `should_run()` for specific samples without spawning full jobs.
 ```bash
-uv run cherami evaluate path/to/config.json SAMPLE_1 SAMPLE_2
+uv run cherami evaluate --orange_box_version <orange_box_version> path/to/config.json SAMPLE_1 SAMPLE_2
 ```
+If you wish to see the logs that explains the decision logic, use:
+```
+uv run cherami --log_level debug evaluate --orange_box_version <orange_box_version> path/to/config.json SAMPLE_1 SAMPLE_2
+```
+You can provide an orange box version to test whether the current deployment would cause the sample
+to be run, or you can use 'None' or '' which will ignore the orange box version (note that this might
+lead to evaluate returning 'True' but the deployment might return 'False')

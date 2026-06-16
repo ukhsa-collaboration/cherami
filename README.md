@@ -58,7 +58,7 @@ cherami serve <config>
 
 ## Configuration
 
-cherami requires a JSON configuration file passed as a positional argument to `serve`. This file configures the pipeline and worker for execution. Examples are provided in the `configs` folder.
+cherami requires a JSON configuration file passed as a positional argument to `serve`. This file configures the pipeline and worker for execution.
 
 Further documentation for the config file can be found [here](docs/dev_config.md).
 

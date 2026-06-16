@@ -14,6 +14,7 @@ from cherami.pipeline_runner import (
     RetryablePipelineError,
 )
 from cherami.pipelines import Pipeline
+from cherami.pipelines.pipeline import PipelineContext
 from cherami.utils import init_kubernetes, init_varys
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ class Worker:
         self._config_path: Path = worker_config.config_path
         self._startup_config_hash: str = worker_config.config_hash
 
-    def on_skip(self, message: Any) -> None:
+    def on_skip(self, message: Any, context: PipelineContext) -> None:
         """Handle messages that should be skipped.
 
         The default implementation acknowledges the message to remove it from
@@ -103,19 +104,19 @@ class Worker:
         Args:
             message: The Varys message object associated with the current
             sample.
+            context: the object holding information about the current upstream
+            context.
 
         Raises:
             Exception: If the Varys client fails to acknowledge the message.
         """
         self._varys_client.acknowledge_message(message)
 
-    def on_success(self, message: Any, payload: dict[str, Any]) -> None:
+    def on_success(self, message: Any, context: PipelineContext) -> None:
         """Handle successful pipeline completions.
 
         Publishes the result to a downstream queue if `publish_queue_suffix` is
-        configured, then acknowledges the original message. If
-        `publish_exchange` is not set, it defaults to publishing to the
-        worker's `listen_exchange`.
+        configured, then acknowledges the original message.
         This enables chaining workers where one worker's output queue becomes
         the next worker's input.
 
@@ -124,20 +125,19 @@ class Worker:
         Args:
             message: The Varys message object associated with the current
                 sample.
-            payload: The message payload to publish downstream.
+            context: the object holding information about the current upstream
+            context.
 
         Raises:
             Exception: If the Varys client fails to publish or acknowledge the
                 message.
         """
-        ## if a worker configured a publish queue, this  send that message to
-        ## the listen_exchange, unless the worker ALSO configures a
-        ## publish_exchange, in which case use that
+        ## if a worker configured a publish queue, this sends that message to
+        ## the publish_exchange
         if self.publish_queue_suffix:
-            target_exchange = self.publish_exchange or self.listen_exchange
             self._varys_client.send(
-                message=payload,
-                exchange=target_exchange,
+                message=context.payload,
+                exchange=self.publish_exchange,
                 queue_suffix=self.publish_queue_suffix,
             )
 
@@ -328,18 +328,26 @@ class Worker:
                         job_uuid,
                     )
 
-                    if not pipeline.should_run(climb_id):
+                    # TODO wrap in try except for runtimeerror
+
+                    # Once we have the message, get the upstream onyx context:
+                    upstream_context: PipelineContext = pipeline.build_context(
+                        payload=payload
+                    )
+
+                    if not pipeline.should_run(upstream_context):
                         logger.info(
-                            "Criteria not met for sample %s; acknowledging message",
+                            "Criteria not met for sample %s; acknowledging "
+                            "message.",
                             climb_id,
                         )
-                        result = self._create_result(
+                        result: PipelineResult = self._create_result(
                             climb_id=climb_id,
                             job_uuid=job_uuid,
                             status="SKIPPED",
                         )
                         audit_db.add_record(result)
-                        self.on_skip(message)
+                        self.on_skip(message, upstream_context)
                         continue
 
                     current_config_hash = hash_from_file(self._config_path)
@@ -469,7 +477,7 @@ class Worker:
                     ## TODO: decide when to actually mark as success - if something fails after the pipeline run but before here,
                     ## then the sample will be retried even though the pipeline itself succeeded and possibly duplicate analysis tables etc
                     ## can we have a check we can add to should_run to see if a characterisation pipeline has already run for this sample
-                    self.on_success(message, payload)
+                    self.on_success(message, upstream_context)
                 except RuntimeError:
                     logger.error("Worker stopping due to pipeline failure")
                     raise
