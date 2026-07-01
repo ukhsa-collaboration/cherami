@@ -214,7 +214,7 @@ def build_worker(
     audit_db_path: Path,
 ) -> Worker:
     pipeline = build_pipeline(config.pipeline_config, config.global_config)
-    return Worker(
+    return OrangeBoxWorker(
         config.worker_config,
         pipeline,
         work_dir,
