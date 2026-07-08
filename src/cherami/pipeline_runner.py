@@ -9,6 +9,7 @@ from kubernetes.client.exceptions import ApiException
 from onyx.exceptions import OnyxConnectionError
 
 from cherami.pipelines import Pipeline
+from cherami.pipelines.pipeline import PipelineContext
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +259,7 @@ class PipelineRunner:
         worker_work_dir: Path,
         worker_output_dir: Path,
         execution_timestamp: datetime.datetime,
+        context: PipelineContext,
     ) -> V1Job:
         """Create and submit a Kubernetes Job for the pipeline.
 
@@ -269,6 +271,7 @@ class PipelineRunner:
             worker_work_dir: Base directory for intermediate work files.
             worker_output_dir: Base directory for final outputs.
             execution_timestamp: Start time of this execution attempt.
+            context: PipelineContext object containing upstream context.
 
         Returns:
             The created Kubernetes Job object.
@@ -287,6 +290,7 @@ class PipelineRunner:
             [sample_id],
             job_uuid,
             job_dirs["samplesheet_path"],
+            context=context,
         )
 
         job_manifest = pipeline.create_job_manifest(
@@ -387,6 +391,7 @@ class PipelineRunner:
         worker_work_dir: Path,
         worker_output_dir: Path,
         execution_timestamp: datetime.datetime,
+        context: PipelineContext,
     ) -> None:
         """Submit the Kubernetes Job and return the result of execution.
 
@@ -400,6 +405,7 @@ class PipelineRunner:
             worker_work_dir: Output directory for intermediate files.
             worker_output_dir: Output directory for published outputs.
             execution_timestamp: start time on execution.
+            context: PipelineContext object containing upstream context.
 
         Raises:
             RetryablePipelineError: For failures eligible for retry (e.g., API
@@ -423,6 +429,7 @@ class PipelineRunner:
                     worker_work_dir=worker_work_dir,
                     worker_output_dir=worker_output_dir,
                     execution_timestamp=execution_timestamp,
+                    context=context,
                 )
             else:
                 logger.info("Attaching to existing job %s", job_name)
@@ -487,6 +494,7 @@ class PipelineRunner:
         worker_work_dir: Path,
         worker_output_dir: Path,
         execution_timestamp: datetime.datetime,
+        context: PipelineContext,
     ) -> None:
         """Launch the given pipeline for a specific sample.
 
@@ -503,6 +511,7 @@ class PipelineRunner:
                 work.
             worker_output_dir: Directory for final published outputs.
             execution_timestamp: start time of execution.
+            context: PipelineContext object containing upstream context.
 
         Raises:
             RetryablePipelineError: When a failure is eligible for retry.
@@ -516,4 +525,5 @@ class PipelineRunner:
             worker_work_dir=worker_work_dir,
             worker_output_dir=worker_output_dir,
             execution_timestamp=execution_timestamp,
+            context=context,
         )

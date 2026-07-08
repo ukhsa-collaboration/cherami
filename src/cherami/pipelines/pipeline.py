@@ -130,7 +130,11 @@ class Pipeline(ABC):
 
     @abstractmethod
     def generate_samplesheet(
-        self, samples: list[str], job_id: str, output_filepath: Path
+        self,
+        samples: list[str],
+        job_id: str,
+        output_filepath: Path,
+        context: PipelineContext,
     ) -> None:
         """Writes a samplesheet for the provided sample IDs to `output_filepath`.
 
@@ -142,6 +146,7 @@ class Pipeline(ABC):
             samples: Sample identifiers the pipeline will process.
             job_id: Identifier associated with the orchestrated job.
             output_filepath: Location where the samplesheet should be written.
+            context: PipelineContext object containing upstream context.
 
         Raises:
             OSError: If the samplesheet fails to write.
