@@ -26,7 +26,7 @@ def mock_onyx_record():
 
 
 def test_generate_samplesheet_success(
-    tmp_path, monkeypatch, amr_pipeline, mock_onyx_record, mocker
+    tmp_path, monkeypatch, amr_pipeline, mock_onyx_record, mocker, test_context
 ):
     monkeypatch.setenv("ONYX_DOMAIN", "test.domain")
     monkeypatch.setenv("ONYX_TOKEN", "test_token")
@@ -35,7 +35,9 @@ def test_generate_samplesheet_success(
     mock_client.get.return_value = mock_onyx_record
     mock_onyx_client.return_value.__enter__.return_value = mock_client
     destination = tmp_path / "CLIMB123_samplesheet.csv"
-    amr_pipeline.generate_samplesheet(["CLIMB123"], "JOB123", destination)
+    amr_pipeline.generate_samplesheet(
+        ["CLIMB123"], "JOB123", destination, test_context
+    )
     with destination.open("r") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
@@ -48,7 +50,7 @@ def test_generate_samplesheet_success(
 
 
 def test_generate_samplesheet_onyx_no_records(
-    tmp_path, monkeypatch, amr_pipeline, mocker
+    tmp_path, monkeypatch, amr_pipeline, mocker, test_context
 ):
     monkeypatch.setenv("ONYX_DOMAIN", "test.domain")
     monkeypatch.setenv("ONYX_TOKEN", "test_token")
@@ -59,11 +61,13 @@ def test_generate_samplesheet_onyx_no_records(
     mock_onyx_client.return_value.__enter__.return_value = mock_client
     destination = tmp_path / "CLIMB123_samplesheet.csv"
     with pytest.raises(ValueError, match="no_records_found"):
-        amr_pipeline.generate_samplesheet(["CLIMB123"], "JOB123", destination)
+        amr_pipeline.generate_samplesheet(
+            ["CLIMB123"], "JOB123", destination, test_context
+        )
 
 
 def test_generate_samplesheet_onyx_missing_fields(
-    tmp_path, monkeypatch, amr_pipeline, mocker
+    tmp_path, monkeypatch, amr_pipeline, mocker, test_context
 ):
     monkeypatch.setenv("ONYX_DOMAIN", "test.domain")
     monkeypatch.setenv("ONYX_TOKEN", "test_token")
@@ -74,4 +78,6 @@ def test_generate_samplesheet_onyx_missing_fields(
     mock_onyx_client.return_value.__enter__.return_value = mock_client
     destination = tmp_path / "CLIMB123_samplesheet.csv"
     with pytest.raises(ValueError, match="missing_expected_data"):
-        amr_pipeline.generate_samplesheet(["CLIMB123"], "JOB123", destination)
+        amr_pipeline.generate_samplesheet(
+            ["CLIMB123"], "JOB123", destination, test_context
+        )

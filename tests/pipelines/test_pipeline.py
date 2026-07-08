@@ -27,7 +27,7 @@ class DummyPipeline(Pipeline):
     def proc_names(self) -> dict[str, list[int]]:
         return self._proc_names
 
-    def generate_samplesheet(self, samples, job_id, output_filepath):
+    def generate_samplesheet(self, samples, job_id, output_filepath, context):
         return
 
 
@@ -483,7 +483,7 @@ def test_pipeline_context_get_upstream_context_hash(
 
 
 class DummyPathCharPipeline(PathCharPipeline):
-    def generate_samplesheet(self, samples, job_id, output_filepath):
+    def generate_samplesheet(self, samples, job_id, output_filepath, context):
         return
 
 
