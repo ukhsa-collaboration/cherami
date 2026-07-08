@@ -479,11 +479,30 @@ class PathCharPipeline(Pipeline):
                 )
             context.orange_box_version = payload["orange_box_version"]
         except KeyError as k:
-            raise ValueError(
+            # Changing this to debug whilst messages on queue do not contain upstream context
+
+            # raise ValueError(
+            #     "%s not available in the message payload, "
+            #     "cannot decipher upstream context.",
+            #     k,
+            # ) from k
+            logger.debug(
                 "%s not available in the message payload, "
-                "cannot decipher upstream context.",
+                "cannot decipher upstream context. Continuing anyway, might cause "
+                "duplicated records.",
                 k,
-            ) from k
+            )
+            # Have to set this to empty to they exist and can be compared in should_run
+            context.orange_box_version = (
+                ""
+                if not context.orange_box_version
+                else context.orange_box_version
+            )
+            context.onyx_versions_hash = (
+                ""
+                if not context.onyx_versions_hash
+                else context.onyx_versions_hash
+            )
 
         return context
 
