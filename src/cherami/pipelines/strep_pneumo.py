@@ -1,9 +1,9 @@
 import csv
+import json
 import logging
-from functools import cache
 from pathlib import Path
 
-from onyx import OnyxClient, OnyxConfig
+from onyx_analysis_helper import onyx_analysis_helper_functions as oa
 
 from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
 from cherami.pipelines.pipeline import (
@@ -12,14 +12,8 @@ from cherami.pipelines.pipeline import (
     get_context_from_record,
 )
 from cherami.pipelines.worker import Worker
-from cherami.utils import init_onyx
 
 logger = logging.getLogger(__name__)
-
-
-@cache
-def onyx_config() -> OnyxConfig:
-    return init_onyx()
 
 
 class StrepPneumoPipeline(PathCharPipeline):
@@ -39,43 +33,74 @@ class StrepPneumoPipeline(PathCharPipeline):
         }
 
     def generate_samplesheet(
-        self, samples: list[str], job_id: str, output_filepath: Path
+        self,
+        samples: list[str],
+        job_id: str,
+        output_filepath: Path,
+        context: PipelineContext,
     ) -> None:
+        """
+        Custom samplesheet constructor. Includes the orange box version and
+        hash from the context object, combined into one string in 'context'.
+
+        Raises:
+            ValueError - if climb id not found in onyx.
+        """
+        try:
+            context_str: str = json.dumps(
+                {
+                    "orange_box_version": context.orange_box_version,
+                    "onyx_versions_hash": context.onyx_versions_hash,
+                }
+            )
+        except KeyError as k:
+            logger.debug(
+                "Missing %s from context object, proceeding without context.",
+                k,
+            )
+            context_str: str = json.dumps(
+                {"orange_box_version": "", "onyx_versions_hash": ""}
+            )
         rows = []
-        with OnyxClient(onyx_config()) as client:
-            for climb_id in samples:
-                climb_records = client.get(
-                    project="synthscape",
-                    climb_id=climb_id,
-                    include=[
+        for sample_id in samples:
+            sample_record: dict
+            versions: list[dict]
+            exitcode: int
+            sample_record, versions, exitcode = (
+                oa.get_data_and_versions_from_onyx(
+                    sample_id=sample_id,
+                    server=context.server,
+                    fields=[
                         "human_filtered_reads_1",
                         "human_filtered_reads_2",
                         "taxon_reports",
                     ],
                 )
-                if not climb_records:
-                    raise ValueError("no_records_found")
-                try:
-                    # Pneumokity requires 2 fastqs as input so for SE pass same fastq twice
-                    if climb_records["human_filtered_reads_2"] == "":
-                        climb_records["human_filtered_reads_2"] = (
-                            climb_records["human_filtered_reads_1"]
-                        )
-                    row = {
-                        "climb_id": climb_id,
-                        "fastq_1": climb_records["human_filtered_reads_1"],
-                        "fastq_2": climb_records["human_filtered_reads_2"],
-                        "kraken_output": f"{climb_records['taxon_reports']}{climb_id}_PlusPF.kraken_assignments.tsv",
-                        "kraken_report": f"{climb_records['taxon_reports']}{climb_id}_PlusPF.kraken_report.txt",
-                    }
-                except KeyError as e:
-                    raise ValueError(
-                        f"missing_expected_data: {e.args[0]}"
-                    ) from e
-                rows.append(row)
+            )
+            if not sample_record:
+                raise ValueError("No records found for %s", sample_id)
+            try:
+                # Pneumokity requires 2 fastqs as input so for SE pass same fastq twice
+                if sample_record["human_filtered_reads_2"] == "":
+                    sample_record["human_filtered_reads_2"] = sample_record[
+                        "human_filtered_reads_1"
+                    ]
+                row = {
+                    "climb_id": sample_id,
+                    "fastq_1": sample_record["human_filtered_reads_1"],
+                    "fastq_2": sample_record["human_filtered_reads_2"],
+                    "kraken_output": f"{sample_record['taxon_reports']}{sample_id}_PlusPF.kraken_assignments.tsv",
+                    "kraken_report": f"{sample_record['taxon_reports']}{sample_id}_PlusPF.kraken_report.txt",
+                    "context": context_str,
+                }
+            except KeyError as e:
+                raise ValueError(f"Missing expected field: {e.args[0]}") from e
+            rows.append(row)
 
         if not rows:
-            raise ValueError("samplesheet_generation_no_records")
+            raise ValueError(
+                "Samplesheet generator found no records for %s", sample_id
+            )
 
         fieldnames = list(rows[0].keys())
         with output_filepath.open("w") as f:
