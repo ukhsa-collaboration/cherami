@@ -553,10 +553,13 @@ def test_pathchar_pipeline_build_context_incomplete_payload(
         "match_uuid": "JOB123",
         "test": "test",
     }
-    with pytest.raises(
-        ValueError, match="not available in the message payload"
-    ):
-        path_char_pipeline.build_context(payload)
+    # This was changed to prevent crashing during testing where old messaged didn't have context
+    # with pytest.raises(
+    #     ValueError, match="not available in the message payload"
+    # ):
+    #     path_char_pipeline.build_context(payload)
+    path_char_pipeline.build_context(payload)
+    assert "not available in the message payload" in caplog.text
 
 
 def test_pathchar_should_run_true(
