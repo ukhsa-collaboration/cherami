@@ -45,21 +45,6 @@ class StrepPneumoPipeline(PathCharPipeline):
         Raises:
             ValueError - if climb id not found in onyx.
         """
-        try:
-            context_str: str = str(
-                {
-                    "orange_box_version": context.orange_box_version,
-                    "onyx_versions_hash": context.onyx_versions_hash,
-                }
-            )
-        except KeyError as k:
-            logger.debug(
-                "Missing %s from context object, proceeding without context.",
-                k,
-            )
-            context_str: str = str(
-                {"orange_box_version": "", "onyx_versions_hash": ""}
-            )
         rows = []
         for sample_id in samples:
             sample_record: dict
@@ -90,7 +75,7 @@ class StrepPneumoPipeline(PathCharPipeline):
                     "fastq_2": sample_record["human_filtered_reads_2"],
                     "kraken_output": f"{sample_record['taxon_reports']}{sample_id}_PlusPF.kraken_assignments.tsv",
                     "kraken_report": f"{sample_record['taxon_reports']}{sample_id}_PlusPF.kraken_report.txt",
-                    "context": context_str,
+                    "orange_box_version": context.orange_box_version,
                 }
             except KeyError as e:
                 raise ValueError(f"Missing expected field: {e.args[0]}") from e
