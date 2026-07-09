@@ -237,6 +237,6 @@ def test_samplesheet(
     samplesheet = pd.read_csv(test_samplesheet_path)
     assert all(
         x
-        for x in ["orange_box_version", "onyx_versions_hash"]
-        if x in samplesheet.loc[0, "context"]
+        for x in ["orange_box_version", "climb_id", "fastq_1", "kraken_out"]
+        if x in samplesheet.columns.values
     )

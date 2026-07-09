@@ -67,7 +67,7 @@ ONYX_RECORD = {
     "alignment_db_version": "1.0.0",
     "human_filtered_reads_1": "/path/to/forward/fastq",
     "human_filtered_reads_2": "",
-    "taxon_reports": "path/to/taxon_reports",
+    "taxon_reports": "path/to/taxon_reports/",
 }
 """Mocked onyx client.get response using old onyx format."""
 
