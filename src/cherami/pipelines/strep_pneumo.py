@@ -1,5 +1,4 @@
 import csv
-import json
 import logging
 from pathlib import Path
 
@@ -47,7 +46,7 @@ class StrepPneumoPipeline(PathCharPipeline):
             ValueError - if climb id not found in onyx.
         """
         try:
-            context_str: str = json.dumps(
+            context_str: str = str(
                 {
                     "orange_box_version": context.orange_box_version,
                     "onyx_versions_hash": context.onyx_versions_hash,
@@ -58,7 +57,7 @@ class StrepPneumoPipeline(PathCharPipeline):
                 "Missing %s from context object, proceeding without context.",
                 k,
             )
-            context_str: str = json.dumps(
+            context_str: str = str(
                 {"orange_box_version": "", "onyx_versions_hash": ""}
             )
         rows = []
