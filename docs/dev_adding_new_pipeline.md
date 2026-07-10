@@ -81,14 +81,14 @@ Your module must export:
 from pathlib import Path
 import csv
 
-from cherami.config import PipelineConfig, WorkerConfig
+from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
 from cherami.pipelines.pipeline import Pipeline
 from cherami.pipelines.worker import Worker
 
 
 class MyPipeline(PathCharPipeline):
     def generate_samplesheet(
-        self, samples: list[str], job_id: str, output_filepath: Path
+        self, samples: list[str], job_id: str, output_filepath: Path, context: PipelineContext
     ) -> None:
         ## For example here make a basic samplesheet
         ## An actual implementation would probably query onyx for relevant fields/data
@@ -98,7 +98,8 @@ class MyPipeline(PathCharPipeline):
             rows.append({
                 "sample_id": sample_id,
                 "fastq_1": f"/data/{sample_id}_R1.fastq.gz",
-                "fastq_2": f"/data/{sample_id}_R2.fastq.gz"
+                "fastq_2": f"/data/{sample_id}_R2.fastq.gz",
+                "orange_box_version": context.orange_box_version
             })
 
         with output_filepath.open("w") as f:
@@ -107,19 +108,19 @@ class MyPipeline(PathCharPipeline):
             writer.writerows(rows)
 
 
-def build_pipeline(pipeline_config: PipelineConfig) -> PathCharPipeline:
+def build_pipeline(pipeline_config: PipelineConfig, global_config: GlobalConfig) -> PathCharPipeline:
     return MyPipeline(pipeline_config)
 
 
 def build_worker(
-    worker_config: WorkerConfig,
-    pipeline_config: PipelineConfig,
+    config: CheramiConfig,
     work_dir: Path,
     output_dir: Path,
+audit_db_path: Path,
 ) -> Worker:
     ## this uses the default worker implementation - which is fine if you dont need any custom behaviour (see below section)
-    pipeline = build_pipeline(pipeline_config)
-    return Worker(worker_config, pipeline, work_dir, output_dir)
+    pipeline = build_pipeline(config.pipeline_config, config.global_config)
+    return Worker(worker_config, pipeline, work_dir, output_dir, audit_db_path)
 ```
 
 **Notes:**
