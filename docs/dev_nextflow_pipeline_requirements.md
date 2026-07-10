@@ -41,3 +41,6 @@ From Cheramis perspective a run is considered successful when:
   - Pipelines can optionally override this to only check a subset of processes, or allow for custom exit codes.
 
 If implementing custom exit codes for processess - ensure these a well documented, otherwise all that is needed is to enable the generation of this file in the correct location.
+
+## Writing Analyses to Onyx 
+If your pipeline creates any analysis results, these should be stored in Onyx in an analysis record. You should use the onyx_analysis_helper to do this. The context for running the analysis should also be captured - this includes the pipeline version, any database or dependency versions that if they were to change would cause different results. It is possible to pass the upstream context Cherami uses for the logic to determine whether the pipeline is run into the pipeline through the samplesheet. 
