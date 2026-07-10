@@ -353,6 +353,8 @@ class Pipeline(ABC):
             nextflow_cmd.extend(
                 ["-profile", ",".join(self.config.nf_profiles)]
             )
+        if self.config.version:
+            nextflow_cmd.extend(["-r", str(self.config.version)])
         if self.config.nf_extra_args:
             nextflow_cmd.extend(self.config.nf_extra_args)
         nextflow_cmd.extend(["--outdir", str(job_dirs["output_dir"])])
