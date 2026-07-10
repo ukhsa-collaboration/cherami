@@ -24,6 +24,7 @@ Create a new configuration file in `configs/` (e.g., `configs/cherami_my_pipelin
 
 ### Naming Conventions
 * **Pipeline Name**: Must be hyphenated (e.g., `my-pipeline`) because it is used to generate Kubernetes job names which can NOT contain underscores.
+* **version**: Use this to specify Git branch, tag, or commit. Nextflow will then pull that codebase.
 * **Module Name**: Can be underscored (e.g., `my_pipeline.py`).
 
 ### Minimal Structure

@@ -44,7 +44,7 @@ These settings configure the `Pipeline` object and the Kubernetes Jobs it spawns
 | Field | Required | Description |
 | --- | --- | --- |
 | `name` | Yes | The identifier for the characterisation pipeline. Used for module loading and Kubernetes Job naming. |
-| `version` | Yes | The version string of the pipeline logic. |
+| `version` | Yes | The version string of the pipeline logic. Should specify Git branch, tag, or commit for Nextflow to pull. |
 | `path` | Yes | File system path to the Nextflow pipeline project (typically a GitHub repository). |
 | `cpus` | Yes | Kubernetes CPU request for the job. |
 | `mem` | Yes | Kubernetes memory request (e.g., "8G"). |
