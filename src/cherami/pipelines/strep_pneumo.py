@@ -1,8 +1,9 @@
 import csv
 import logging
+from functools import cache
 from pathlib import Path
 
-from onyx_analysis_helper import onyx_analysis_helper_functions as oa
+from onyx import OnyxClient, OnyxConfig
 
 from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
 from cherami.pipelines.pipeline import (
@@ -11,8 +12,14 @@ from cherami.pipelines.pipeline import (
     get_context_from_record,
 )
 from cherami.pipelines.worker import Worker
+from cherami.utils import init_onyx
 
 logger = logging.getLogger(__name__)
+
+
+@cache
+def onyx_config() -> OnyxConfig:
+    return init_onyx()
 
 
 class StrepPneumoPipeline(PathCharPipeline):
@@ -39,30 +46,27 @@ class StrepPneumoPipeline(PathCharPipeline):
         context: PipelineContext,
     ) -> None:
         """
-        Custom samplesheet constructor. Includes the orange box version and
-        hash from the context object, combined into one string in 'context'.
+        Custom samplesheet constructor. Includes the orange box version from
+        the context object.
 
         Raises:
             ValueError - if climb id not found in onyx.
         """
         rows = []
-        for sample_id in samples:
-            sample_record: dict
-            versions: list[dict]
-            exitcode: int
-            sample_record, versions, exitcode = (
-                oa.get_data_and_versions_from_onyx(
-                    sample_id=sample_id,
-                    server=context.server,
-                    fields=[
+        with OnyxClient(onyx_config()) as client:
+            for sample_id in samples:
+                sample_record = client.get(
+                    project="synthscape",
+                    climb_id=sample_id,
+                    include=[
                         "human_filtered_reads_1",
                         "human_filtered_reads_2",
                         "taxon_reports",
                     ],
                 )
-            )
             if not sample_record:
-                raise ValueError("No records found for %s", sample_id)
+                raise ValueError("No records found for sample %s.", sample_id)
+
             try:
                 # Pneumokity requires 2 fastqs as input so for SE pass same fastq twice
                 if sample_record["human_filtered_reads_2"] == "":
@@ -83,7 +87,7 @@ class StrepPneumoPipeline(PathCharPipeline):
 
         if not rows:
             raise ValueError(
-                "Samplesheet generator found no records for %s", sample_id
+                "Samplesheet generator found no records for sample."
             )
 
         fieldnames = list(rows[0].keys())
@@ -123,8 +127,6 @@ class StrepPneumoPipeline(PathCharPipeline):
             # don't run
             return False
 
-        from onyx_analysis_helper import onyx_analysis_helper_functions as oa
-
         # 1) collate the current context from context object
         current_context = (
             context.onyx_versions_hash,
@@ -133,6 +135,8 @@ class StrepPneumoPipeline(PathCharPipeline):
 
         # 2) get all the claspar analysis tables with name select_table_name
         # associated with the sample.
+        from onyx_analysis_helper import onyx_analysis_helper_functions as oa
+
         analysis_tables: dict
         exitcode: int
         analysis_tables, exitcode = oa.get_analysis_records(
