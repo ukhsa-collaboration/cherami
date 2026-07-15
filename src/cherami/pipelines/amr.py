@@ -5,7 +5,7 @@ from pathlib import Path
 from onyx import OnyxClient
 
 from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
-from cherami.pipelines.pipeline import PathCharPipeline
+from cherami.pipelines.pipeline import PathCharPipeline, PipelineContext
 from cherami.pipelines.worker import Worker
 from cherami.utils import init_onyx
 
@@ -14,7 +14,11 @@ logger = logging.getLogger(__name__)
 
 class AmrPipeline(PathCharPipeline):
     def generate_samplesheet(
-        self, samples: list[str], job_id: str, output_filepath: Path
+        self,
+        samples: list[str],
+        job_id: str,
+        output_filepath: Path,
+        context: PipelineContext,
     ) -> None:
         config = init_onyx()
         rows = []

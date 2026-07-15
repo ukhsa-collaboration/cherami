@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -211,3 +212,31 @@ def test_how_long_does_it_take(
 
     assert strep_pipeline.should_run(test_context)
     assert "Decision: run" in caplog.text
+
+
+@patch(
+    "onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get",
+)
+def test_samplesheet(
+    mock_onyx, strep_pipeline, test_context, tmp_path, mock_analysis_1
+):
+    import pandas as pd
+
+    test_context.onyx_versions_hash = "ABC123DEF456"
+    test_samplesheet_path = Path(tmp_path / "test_samplesheet.csv")
+    mock_onyx.return_value = mock_analysis_1.onyx_record
+
+    strep_pipeline.generate_samplesheet(
+        samples=["ID-12345678"],
+        job_id="id1234",
+        output_filepath=test_samplesheet_path,
+        context=test_context,
+    )
+
+    # Read in samplesheet:
+    samplesheet = pd.read_csv(test_samplesheet_path)
+    assert all(
+        x
+        for x in ["orange_box_version", "climb_id", "fastq_1", "kraken_out"]
+        if x in samplesheet.columns.values
+    )

@@ -18,6 +18,8 @@ Ensure the following is implemented in the Nextflow pipeline:
 
 Cherami always expects a pipeline to accept inputs via a samplesheet flag (`--samplesheet`). The samplesheet should contain all inputs the pipeline needs to run, with a documented example.
 
+If your pipeline will be kicked off based on some information that Cherami has that your pipeline the needs, this can be included in the samplesheet, and parsed out in your Nextflow pipeline. For example, if your pipeline checks whether to run based on some Orange Box outputs, the version of the Orange Box needs to be included in the samplesheet.  
+
 ### Accept a `--outdir` parameter
 
 Cherami always expects an `--outdir` flag to store output directories.
@@ -39,3 +41,6 @@ From Cheramis perspective a run is considered successful when:
   - Pipelines can optionally override this to only check a subset of processes, or allow for custom exit codes.
 
 If implementing custom exit codes for processess - ensure these a well documented, otherwise all that is needed is to enable the generation of this file in the correct location.
+
+## Writing Analyses to Onyx 
+If your pipeline creates any analysis results, these should be stored in Onyx in an analysis record. You should use the onyx_analysis_helper to do this. The context for running the analysis should also be captured - this includes the pipeline version, any database or dependency versions that if they were to change would cause different results. It is possible to pass the upstream context Cherami uses for the logic to determine whether the pipeline is run into the pipeline through the samplesheet. 
