@@ -328,8 +328,6 @@ class Worker:
                         job_uuid,
                     )
 
-                    # TODO wrap in try except for runtimeerror
-
                     # Once we have the message, get the upstream onyx context:
                     upstream_context: PipelineContext = pipeline.build_context(
                         payload=payload
@@ -379,6 +377,7 @@ class Worker:
                             worker_work_dir=self.work_dir,
                             worker_output_dir=self.output_dir,
                             execution_timestamp=start_time,
+                            context=upstream_context,
                         )
                     except RetryablePipelineError as e:
                         end_time = datetime.datetime.now(datetime.UTC)

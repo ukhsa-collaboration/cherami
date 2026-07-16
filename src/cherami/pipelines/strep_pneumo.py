@@ -39,43 +39,56 @@ class StrepPneumoPipeline(PathCharPipeline):
         }
 
     def generate_samplesheet(
-        self, samples: list[str], job_id: str, output_filepath: Path
+        self,
+        samples: list[str],
+        job_id: str,
+        output_filepath: Path,
+        context: PipelineContext,
     ) -> None:
+        """
+        Custom samplesheet constructor. Includes the orange box version from
+        the context object.
+
+        Raises:
+            ValueError - if climb id not found in onyx.
+        """
         rows = []
         with OnyxClient(onyx_config()) as client:
-            for climb_id in samples:
-                climb_records = client.get(
+            for sample_id in samples:
+                sample_record = client.get(
                     project="synthscape",
-                    climb_id=climb_id,
+                    climb_id=sample_id,
                     include=[
                         "human_filtered_reads_1",
                         "human_filtered_reads_2",
                         "taxon_reports",
                     ],
                 )
-                if not climb_records:
-                    raise ValueError("no_records_found")
-                try:
-                    # Pneumokity requires 2 fastqs as input so for SE pass same fastq twice
-                    if climb_records["human_filtered_reads_2"] == "":
-                        climb_records["human_filtered_reads_2"] = (
-                            climb_records["human_filtered_reads_1"]
-                        )
-                    row = {
-                        "climb_id": climb_id,
-                        "fastq_1": climb_records["human_filtered_reads_1"],
-                        "fastq_2": climb_records["human_filtered_reads_2"],
-                        "kraken_output": f"{climb_records['taxon_reports']}{climb_id}_PlusPF.kraken_assignments.tsv",
-                        "kraken_report": f"{climb_records['taxon_reports']}{climb_id}_PlusPF.kraken_report.txt",
-                    }
-                except KeyError as e:
-                    raise ValueError(
-                        f"missing_expected_data: {e.args[0]}"
-                    ) from e
-                rows.append(row)
+            if not sample_record:
+                raise ValueError("No records found for sample %s.", sample_id)
+
+            try:
+                # Pneumokity requires 2 fastqs as input so for SE pass same fastq twice
+                if sample_record["human_filtered_reads_2"] == "":
+                    sample_record["human_filtered_reads_2"] = sample_record[
+                        "human_filtered_reads_1"
+                    ]
+                row = {
+                    "climb_id": sample_id,
+                    "fastq_1": sample_record["human_filtered_reads_1"],
+                    "fastq_2": sample_record["human_filtered_reads_2"],
+                    "kraken_output": f"{sample_record['taxon_reports']}{sample_id}_PlusPF.kraken_assignments.tsv",
+                    "kraken_report": f"{sample_record['taxon_reports']}{sample_id}_PlusPF.kraken_report.txt",
+                    "orange_box_version": context.orange_box_version,
+                }
+            except KeyError as e:
+                raise ValueError(f"Missing expected field: {e.args[0]}") from e
+            rows.append(row)
 
         if not rows:
-            raise ValueError("samplesheet_generation_no_records")
+            raise ValueError(
+                "Samplesheet generator found no records for sample."
+            )
 
         fieldnames = list(rows[0].keys())
         with output_filepath.open("w") as f:
@@ -114,8 +127,6 @@ class StrepPneumoPipeline(PathCharPipeline):
             # don't run
             return False
 
-        from onyx_analysis_helper import onyx_analysis_helper_functions as oa
-
         # 1) collate the current context from context object
         current_context = (
             context.onyx_versions_hash,
@@ -124,6 +135,8 @@ class StrepPneumoPipeline(PathCharPipeline):
 
         # 2) get all the claspar analysis tables with name select_table_name
         # associated with the sample.
+        from onyx_analysis_helper import onyx_analysis_helper_functions as oa
+
         analysis_tables: dict
         exitcode: int
         analysis_tables, exitcode = oa.get_analysis_records(

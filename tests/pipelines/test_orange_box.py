@@ -51,11 +51,16 @@ def message():
     return test_message
 
 
-def test_generate_samplesheet_success(tmp_path, orange_box_pipeline):
+def test_generate_samplesheet_success(
+    tmp_path, orange_box_pipeline, test_context
+):
     samples = ["CLIMB-001", "CLIMB-002"]
     job_id = "JOB123"
     output_filepath = tmp_path / "samplesheet.csv"
-    orange_box_pipeline.generate_samplesheet(samples, job_id, output_filepath)
+
+    orange_box_pipeline.generate_samplesheet(
+        samples, job_id, output_filepath, test_context
+    )
     with output_filepath.open("r") as f:
         reader = csv.DictReader(f)
         fieldnames = reader.fieldnames
@@ -68,13 +73,15 @@ def test_generate_samplesheet_success(tmp_path, orange_box_pipeline):
     assert rows[1]["climb_id"] == "CLIMB-002"
 
 
-def test_generate_samplesheet_empty_fail(tmp_path, orange_box_pipeline):
+def test_generate_samplesheet_empty_fail(
+    tmp_path, orange_box_pipeline, test_context
+):
     samples = []
     job_id = "JOB123"
     output_filepath = tmp_path / "samplesheet.csv"
     with pytest.raises(ValueError, match="samplesheet_generation_no_records"):
         orange_box_pipeline.generate_samplesheet(
-            samples, job_id, output_filepath
+            samples, job_id, output_filepath, context=test_context
         )
 
 

@@ -16,7 +16,11 @@ logger = logging.getLogger(__name__)
 
 class OrangeBoxPipeline(Pipeline):
     def generate_samplesheet(
-        self, samples: list[str], job_id: str, output_filepath: Path
+        self,
+        samples: list[str],
+        job_id: str,
+        output_filepath: Path,
+        context: PipelineContext,
     ) -> None:
         rows = []
         for climb_id in samples:
