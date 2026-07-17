@@ -15,6 +15,8 @@
 
   - The Pipeline object stores GlobalConfig as an attribute global_config. Build_worker builds pipeline from CheramiConfig object (instead of GlobalConfig and PipelineConfig separately) and accesses the global and pipeline config attributes needed to give to build_worker.
 
+- _breaking_: The version field in the pipeline config now must be used to specify a Git branch, tag, or commit. Docs updated to reflect this.
+
 ### Added
 - _breaking_: required to add 'server' to cherami global config files and parse this into GlobalConfig.
 
@@ -27,6 +29,11 @@
 - unittests for orange box should_run logic.
 
 - conftest.py to tests with placeholders for env vars.
+
+
+---
+---
+
 
 ## [0.1.0]
 
