@@ -1,15 +1,12 @@
 import csv
-import json
 import logging
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
-from cherami.config import PipelineConfig
-from cherami.pipelines.orange_box import OrangeBoxPipeline
-
-PipelineConfig.version = "1.0.0"
+from cherami.config import PipelineConfig, WorkerConfig
+from cherami.pipelines.orange_box import OrangeBoxPipeline, OrangeBoxWorker
 
 
 @pytest.fixture
@@ -37,18 +34,6 @@ def orangebox_config():
 @pytest.fixture
 def orange_box_pipeline(orangebox_config, global_config):
     return OrangeBoxPipeline(orangebox_config, global_config)
-
-
-class MockMessage:
-    def __init__(self, body):
-        self.body = body
-
-
-@pytest.fixture
-def message():
-    payload = {"climb_id": "C123ABC", "match_uuid": "JOB123", "test": "test"}
-    test_message = MockMessage(body=json.dumps(payload))
-    return test_message
 
 
 def test_generate_samplesheet_success(
@@ -189,3 +174,47 @@ def test_should_run_multiple_analyses_one_match(
             mock_multiple_analyses.context
         )
         assert "Decision: not run." in caplog.text
+
+
+## Test the worker
+@pytest.fixture
+def orangebox_worker_config():
+    return WorkerConfig(
+        listen_exchange="test_listen_exchange",
+        listen_queue_suffix="test_listen_queue_suffix",
+        publish_queue_suffix="test_publish_queue_suffix",
+        publish_exchange="test_publish_exchange",
+        rerun_queue_suffix="test_rerun_queue_suffix",
+        rerun_exchange="test_rerun_exchange",
+        priority_queue_suffix="test_priority_queue_suffix",
+        priority_exchange="test_priority_exchange",
+        varys_config_path=Path("this/is/a/path"),
+        varys_log_path=Path("this/is/a/path"),
+        config_path=Path("/this/is/a/Path"),
+        config_hash="ABC123",
+    )
+
+
+@pytest.fixture
+def orange_box_worker(orangebox_worker_config, orange_box_pipeline, tmp_path):
+    return OrangeBoxWorker(
+        worker_config=orangebox_worker_config,
+        pipeline=orange_box_pipeline,
+        work_dir=tmp_path / "work",
+        output_dir=tmp_path / "output",
+        audit_db_path=tmp_path / "audit.db",
+    )
+
+
+def test_orange_box_worker_get_message(orange_box_worker, message, message_2):
+    """Should return priority message"""
+    orange_box_worker._varys_client = Mock()
+    # receive order is priority, main, rerun:
+    orange_box_worker._varys_client.receive.side_effect = [
+        message_2,
+        message,
+        message,
+    ]
+
+    received_message = orange_box_worker._get_message()
+    assert "C456DEF" in received_message.body
