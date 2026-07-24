@@ -275,6 +275,24 @@ class Worker:
             duration=duration,
         )
 
+    def _get_message(self) -> Any | None:
+        """
+        Default message consumption is to listen to one queue.
+
+        Overwrite this message to implement more complex message consumption
+        or priority.
+
+        Returns: varys_client message object or None.
+
+        """
+        message: Any = self._varys_client.receive(
+            exchange=self.listen_exchange,
+            queue_suffix=self.listen_queue_suffix,
+            prefetch_count=1,
+            timeout=1,
+        )
+        return message
+
     def run(self) -> None:
         """Execute the main worker loop.
 
@@ -311,12 +329,7 @@ class Worker:
                 ## it goes back to the queue. If max_attempts is exhausted, call `on_sample_failure` to ack and handle
                 # the error to move on.
                 try:
-                    message = self._varys_client.receive(
-                        exchange=self.listen_exchange,
-                        queue_suffix=self.listen_queue_suffix,
-                        prefetch_count=1,
-                        timeout=1,
-                    )
+                    message = self._get_message()
                     if not message:
                         time.sleep(5)
                         continue
