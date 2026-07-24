@@ -20,6 +20,10 @@ def mock_worker_config():
         varys_log_path=Path("/idont/exist/varys.log"),
         config_path=Path("/idont/exist/config.json"),
         config_hash="hash",
+        rerun_queue_suffix=None,
+        rerun_exchange=None,
+        priority_queue_suffix=None,
+        priority_exchange=None,
     )
 
 
