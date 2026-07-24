@@ -90,6 +90,12 @@ class Worker:
             worker_config.publish_queue_suffix
         )
         self.publish_exchange: str | None = worker_config.publish_exchange
+        self.rerun_exchange: str | None = worker_config.rerun_exchange
+        self.rerun_queue_suffix: str | None = worker_config.rerun_queue_suffix
+        self.priority_exchange: str | None = worker_config.priority_exchange
+        self.priority_queue_suffix: str | None = (
+            worker_config.priority_queue_suffix
+        )
         self._config_path: Path = worker_config.config_path
         self._startup_config_hash: str = worker_config.config_hash
 
