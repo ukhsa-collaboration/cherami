@@ -73,6 +73,10 @@ class WorkerConfig:
     listen_queue_suffix: str
     publish_queue_suffix: str | None
     publish_exchange: str | None
+    rerun_queue_suffix: str | None
+    rerun_exchange: str | None
+    priority_queue_suffix: str | None
+    priority_exchange: str | None
     varys_config_path: Path
     varys_log_path: Path
     config_path: Path
@@ -99,6 +103,18 @@ class WorkerConfig:
                 else None,
                 publish_exchange=str(raw_config["publish_exchange"])
                 if raw_config["publish_exchange"] is not None
+                else None,
+                rerun_queue_suffix=str(raw_config["rerun_queue_suffix"])
+                if raw_config["rerun_queue_suffix"] is not None
+                else None,
+                rerun_exchange=str(raw_config["rerun_exchange"])
+                if raw_config["rerun_exchange"] is not None
+                else None,
+                priority_queue_suffix=str(raw_config["priority_queue_suffix"])
+                if raw_config["priority_queue_suffix"] is not None
+                else None,
+                priority_exchange=str(raw_config["priority_exchange"])
+                if raw_config["priority_exchange"] is not None
                 else None,
                 varys_config_path=Path(raw_config["varys_config_path"]),
                 varys_log_path=Path(raw_config["varys_log_path"]),
