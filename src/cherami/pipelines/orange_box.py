@@ -160,6 +160,56 @@ class OrangeBoxPipeline(Pipeline):
 
 
 class OrangeBoxWorker(Worker):
+    def _get_message(self) -> Any | None:
+        """
+        Overwrites the default Worker method to handle priority queues.
+        Orange Box has three queues to consume from. The main listening queue
+        is the main ingest queue, plus there is a low priority rerun queue for
+        messages that are being rerun through the entire pipeline, and finally
+        there is a high priority rerun queue local to orange box only, such
+        that everything downstream of chimera can be rerun.
+
+        Returns: one varys_client message object.
+        """
+        while True:
+            priority_message: Any = self._varys_client.receive(
+                exchange=self.priority_exchange,
+                queue_suffix=self.priority_queue_suffix,
+                prefetch_count=1,
+                timeout=1,
+            )
+
+            main_message: Any = self._varys_client.receive(
+                exchange=self.listen_exchange,
+                queue_suffix=self.listen_queue_suffix,
+                prefetch_count=1,
+                timeout=1,
+            )
+            # low priority rerun queue
+            rerun_message: Any = self._varys_client.receive(
+                exchange=self.rerun_exchange,
+                queue_suffix=self.rerun_queue_suffix,
+                prefetch_count=1,
+                timeout=1,
+            )
+
+            # Handle the message that is returned, nack any other messages if
+            # present
+            if priority_message:
+                message = priority_message
+                if rerun_message:
+                    self._varys_client.nack_message(rerun_message)
+                if main_message:
+                    self._varys_client.nack_message(main_message)
+            elif main_message:
+                message = main_message
+                if rerun_message:
+                    self._varys_client.nack_message(rerun_message)
+            elif rerun_message:
+                message = rerun_message
+
+            return message
+
     def on_success(self, message: Any, context: PipelineContext) -> None:
         """Handle successful orange box pipeline completions.
 
