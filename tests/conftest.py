@@ -1,3 +1,4 @@
+import json
 import os
 from dataclasses import dataclass
 
@@ -7,6 +8,25 @@ from cherami.pipelines.pipeline import PipelineContext
 
 os.environ["ONYX_DOMAIN"] = "Placeholder domain"
 os.environ["ONYX_TOKEN"] = "Placeholder token"
+
+
+class MockMessage:
+    def __init__(self, body):
+        self.body = body
+
+
+@pytest.fixture
+def message():
+    payload = {"climb_id": "C123ABC", "match_uuid": "JOB123", "test": "test"}
+    test_message = MockMessage(body=json.dumps(payload))
+    return test_message
+
+
+@pytest.fixture
+def message_2():
+    payload = {"climb_id": "C456DEF", "match_uuid": "JOB124", "test": "test2"}
+    test_message = MockMessage(body=json.dumps(payload))
+    return test_message
 
 
 class MockGlobalConfig:
