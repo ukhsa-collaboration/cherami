@@ -4,7 +4,7 @@ version = "26.07.0"
 description = "Cherami - *SCAPE sample orchestration."
 readme = "README.md"
 authors = [
-    { name = "Sam Sims", email = "samsimss98@gmail.com" },
+    { name = "Sam Sims", email = "sam.sims@ukhsa.gov.uk" },
     { name = "Jess Friedersdorff", email = "jess.friedersdorff@ukhsa.gov.uk" }
 ]
 requires-python = ">=3.12"
