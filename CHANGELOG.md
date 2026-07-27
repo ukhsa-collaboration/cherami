@@ -20,6 +20,8 @@
 
 - Dev docs on versioning cherami.
 
+- Cherami CLI now has version argument (--version or -V). Version and codename are stored in _version.py.
+
 ### Changed
 - _breaking_: allow the user to explicitly set the number of attempts for a pipeline - this is validated at config parse time that this value is >=1. This is a breaking to change to all configs.
 
