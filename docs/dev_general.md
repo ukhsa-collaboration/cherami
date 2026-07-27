@@ -15,13 +15,13 @@ Docstrings should be in [google](https://google.github.io/styleguide/pyguide.htm
 ### Versioning
 It was decided that SemVer didn't suit Cherami, so instead Cherami will use CalVer with patch, and a two-word codename, e.g.:
 
-`YY.MM.PATCH "code name"`
+`YY.M.PATCH "code name"`
 
-The `pyproject.toml` holds the version of the Cherami codebase, and the version and human readable codename is also stored in `src._version.py` which is accessed when using the version cherami CLI argument.
-The release tag is the version `vYY.MM.PATCH`. The release title is `YY.MM.PATCH "code name"`. Release notes should define the version and codename, like in the codebase.
+The `pyproject.toml` holds the version of the Cherami codebase, and the human readable codename is stored in `src/__init__.py`, giving access to the version and codename for the cherami CLI.
+The release tag is the version `vYY.M.PATCH`. The release title is `YY.M.PATCH "code name"`. Release notes should define the version and codename, like in the codebase.
 The container is then referenced by the release tag.
 
-The codename is predominantly human-readable, with the CalVer offering inherent chronology.
+The codename is predominantly human-readable, with the CalVer offering inherent chronology. It should be incremented with every major update (not patch). Patching will fix any already implemented functionality or updates documentation, and does not introduce any new features.
 
 The codename is the name of a pigeon breed, and should be chosen from Wikipedia (https://en.wikipedia.org/wiki/List_of_pigeon_breeds). For example:
 * Red Carneau
