@@ -68,12 +68,12 @@ These settings configure the `Worker` instance that orchestrates the pipeline.
 | --- | --- | --- |
 | `listen_exchange` | Yes | The RabbitMQ exchange the worker listens to. |
 | `listen_queue_suffix` | Yes | Suffix for the queue name. Varys combines this with the exchange name. |
-| `publish_queue_suffix` | Optional | If set, successful runs publish the original message to this queue. |
-| `publish_exchange` | Optional | The exchange used for publishing success messages. |
-| `rerun_queue_suffix` | Optional | If set, by default this _will not_ be consumed from. The pipeline worker _get_message method must be overwritten to consume from this queue. |
-| `rerun_exchange` | Optional | The exchange used for rerunning samples. This exchange is not pushed to. |
-| `priority_queue_suffix` | Optional | If set, by default this _will not_ be consumed from. The pipeline worker _get_message method must be overwritten to consume from this queue. |
-| `priority_exchange` | Optional | The exchange is where priority samples will be pushed to. |
+| `publish_queue_suffix` | Nullable | If set, successful runs publish the original message to this queue. |
+| `publish_exchange` | Nullable | The exchange used for publishing success messages. |
+| `rerun_queue_suffix` | Nullable | If set, by default this _will not_ be consumed from. The pipeline worker _get_message method must be overwritten to consume from this queue. |
+| `rerun_exchange` | Nullable | The exchange used for rerunning samples. This exchange is not pushed to. |
+| `priority_queue_suffix` | Nullable | If set, by default this _will not_ be consumed from. The pipeline worker _get_message method must be overwritten to consume from this queue. |
+| `priority_exchange` | Nullable | The exchange is where priority samples will be pushed to. |
 | `varys_config_path` | Yes | Path to the Varys configuration file (`varys.cfg`). |
 | `varys_log_path` | Yes | Path where the worker's Varys log should be written. |
 
