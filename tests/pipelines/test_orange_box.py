@@ -206,15 +206,32 @@ def orange_box_worker(orangebox_worker_config, orange_box_pipeline, tmp_path):
     )
 
 
-def test_orange_box_worker_get_message(orange_box_worker, message, message_2):
-    """Should return priority message"""
+@pytest.mark.parametrize(
+    ("sideeffect", "queue"),
+    [
+        (["message_2", "message", "message"], "priority"),
+        (["None", "message_2", "message"], "main"),
+        (["None", "None", "message_2"], "rerun"),
+        (["None", "None", "message_2"], ""),
+    ],
+)
+def test_orange_box_worker_get_message(
+    sideeffect, queue, orange_box_worker, caplog, request, message, message_2
+):
+    """Tests the four conditions of _get_messsage - message consumption from
+    priority, main and rerun queues or none."""
+    caplog.set_level(logging.INFO)
     orange_box_worker._varys_client = Mock()
-    # receive order is priority, main, rerun:
-    orange_box_worker._varys_client.receive.side_effect = [
-        message_2,
-        message,
-        message,
+    side_effects: list = [
+        request.getfixturevalue(x) if x != "None" else None for x in sideeffect
     ]
 
+    # receive order is priority, main, rerun:
+    orange_box_worker._varys_client.receive.side_effect = side_effects
+
     received_message = orange_box_worker._get_message()
-    assert "C456DEF" in received_message.body
+    if received_message:
+        assert queue in caplog.text
+        assert "C456DEF" in received_message.body
+    else:
+        assert not received_message
