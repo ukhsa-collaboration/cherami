@@ -62,6 +62,11 @@ class Worker:
         varys_log_path: Path to the Varys log file.
         publish_queue_suffix: Optional queue suffix for completion messages.
         publish_exchange: Optional exchange for completion messages.
+        rerun_queue_suffix: Optional queue suffix for upstream rerun.
+        rerun_exchange: Optional exchange for upstream rerun (NOTE: this is
+        not used to push messages to).
+        priority_queue_suffix: Optional queue suffix for priority queue.
+        priority_exchange: Optional exchange name for the priority messages.
         _config_path: Path to the worker configuration file.
         _startup_config_hash: Hash of the configuration at startup.
     """
