@@ -69,13 +69,17 @@ These settings configure the `Worker` instance that orchestrates the pipeline.
 | `listen_exchange` | Yes | The RabbitMQ exchange the worker listens to. |
 | `listen_queue_suffix` | Yes | Suffix for the queue name. Varys combines this with the exchange name. |
 | `publish_queue_suffix` | Optional | If set, successful runs publish the original message to this queue. |
-| `publish_exchange` | Optional | The exchange used for publishing success messages. Defaults to `listen_exchange` if not set. |
+| `publish_exchange` | Optional | The exchange used for publishing success messages. |
+| `rerun_queue_suffix` | Optional | If set, by default this _will not_ be consumed from. The pipeline worker _get_message method must be overwritten to consume from this queue. |
+| `rerun_exchange` | Optional | The exchange used for rerunning samples. This exchange is not pushed to. |
+| `priority_queue_suffix` | Optional | If set, by default this _will not_ be consumed from. The pipeline worker _get_message method must be overwritten to consume from this queue. |
+| `priority_exchange` | Optional | The exchange is where priority samples will be pushed to. |
 | `varys_config_path` | Yes | Path to the Varys configuration file (`varys.cfg`). |
 | `varys_log_path` | Yes | Path where the worker's Varys log should be written. |
 
 ## 5. Minimal Example
 
-Below is a minimal valid configuration. See `configs/cherami_amr.json` or `configs/cherami_orange_box.json` for production examples.
+Below is a minimal valid configuration.
 
 ```json
 {
@@ -107,6 +111,10 @@ Below is a minimal valid configuration. See `configs/cherami_amr.json` or `confi
     "listen_queue_suffix": "my_pipeline_queue",
     "publish_queue_suffix": null,
     "publish_exchange": null,
+    "rerun_queue_suffix": null,
+    "rerun_exchange": null,
+    "priority_queue_suffix": null,
+    "priority_exchange": null,
     "varys_config_path": "./conf/varys.cfg",
     "varys_log_path": "./my_pipeline_varys.log"
   }

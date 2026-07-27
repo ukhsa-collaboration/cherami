@@ -59,6 +59,10 @@ Create a new configuration file in `configs/` (e.g., `configs/cherami_my_pipelin
     "listen_queue_suffix": "my_pipeline_queue",
     "publish_queue_suffix": null,
     "publish_exchange": null,
+    "rerun_queue_suffix": null,
+    "rerun_exchange": null,
+    "priority_queue_suffix": null,
+    "priority_exchange": null,
     "varys_config_path": "./conf/varys.cfg",
     "varys_log_path": "./my_pipeline_varys.log"
   }
@@ -174,7 +178,7 @@ Override `validate()` to perform setup checks (e.g., verifying external files ex
 
 ### Standard Worker
 The default `Worker` class (`src/cherami/pipelines/worker.py`) is sufficient for most use cases. It:
-1. Listens to the configured exchange.
+1. Listens to and consumes from the configured 'listen' exchange.
 2. Launches the pipeline.
 3. On success: Optionally republishes to a downstream queue (if `publish_queue_suffix` is set).
 4. On failure: Retries until `max_attempts` is exhausted.
@@ -182,7 +186,9 @@ The default `Worker` class (`src/cherami/pipelines/worker.py`) is sufficient for
 ### Custom Worker
 You can however, extend the base `Worker` if you need custom orchestration logic:
 - **Custom Payloads**: Processing messages that don't fit `climb_id`/`match_uuid`.
-- **Additional exchanges**: Publishing to a success or fail queue.
+- **Additional exchanges**: Publishing to a success or fail queue, or consuming from other queues
+with priority.
+- **Rerun logic**: involves consuming from a rerun queue and publishing to a rerun exchange.
 - **Error handling**: Dead-letter queues, alerting systems, or custom retry backoffs.
 
 To do this, subclass `Worker` and override the relevant hooks:
@@ -190,6 +196,7 @@ To do this, subclass `Worker` and override the relevant hooks:
 - `on_success(message, payload)`
 - `on_retry(message)`
 - `on_sample_failure(message)`
+- `_get_message()`
 
 Return your new subclass from `build_worker` in your pipeline module.
 
