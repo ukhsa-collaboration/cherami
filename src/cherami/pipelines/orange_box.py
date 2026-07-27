@@ -160,7 +160,7 @@ class OrangeBoxPipeline(Pipeline):
 
 
 class OrangeBoxWorker(Worker):
-    def _get_message(self) -> Any | None:
+    def get_message(self) -> Any | None:
         """
         Overwrites the default Worker method to handle priority queues.
         Orange Box has three queues to consume from. The main listening queue

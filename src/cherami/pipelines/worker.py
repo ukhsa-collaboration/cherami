@@ -281,7 +281,7 @@ class Worker:
             duration=duration,
         )
 
-    def _get_message(self) -> Any | None:
+    def get_message(self) -> Any | None:
         """
         Default message consumption is to listen to one queue.
 
@@ -335,7 +335,7 @@ class Worker:
                 ## it goes back to the queue. If max_attempts is exhausted, call `on_sample_failure` to ack and handle
                 # the error to move on.
                 try:
-                    message = self._get_message()
+                    message = self.get_message()
                     if not message:
                         time.sleep(5)
                         continue

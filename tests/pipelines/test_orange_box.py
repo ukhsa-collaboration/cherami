@@ -229,7 +229,7 @@ def test_orange_box_worker_get_message(
     # receive order is priority, main, rerun:
     orange_box_worker._varys_client.receive.side_effect = side_effects
 
-    received_message = orange_box_worker._get_message()
+    received_message = orange_box_worker.get_message()
     if received_message:
         assert queue in caplog.text
         assert "C456DEF" in received_message.body
