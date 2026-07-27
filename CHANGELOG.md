@@ -1,5 +1,5 @@
 # Changelog
-## v26.07.1 "Racing Homer"
+## v26.07.0 "Racing Homer"
 
 ### Added
 - _breaking_: required to add 'server' to cherami global config files and parse this into GlobalConfig.
@@ -17,6 +17,8 @@
 - Nextflow command is build with '-r' and takes the version from the pipeline config. All pipelines must now utilise releases in production.
 
 - Samplesheet can be used to convey inforamtion between workers, for example the orange box version required for PathChar analysis records.
+
+- Dev docs on versioning cherami.
 
 ### Changed
 - _breaking_: allow the user to explicitly set the number of attempts for a pipeline - this is validated at config parse time that this value is >=1. This is a breaking to change to all configs.

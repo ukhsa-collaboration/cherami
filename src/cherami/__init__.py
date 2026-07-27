@@ -1,3 +1,3 @@
-__version__ = "26.07.1"
-# Version: v26.07.1
+__version__ = "26.07.0"
+# Version: v26.07.0
 # Codename: "Racing Homer"

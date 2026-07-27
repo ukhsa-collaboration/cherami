@@ -1,11 +1,11 @@
 [project]
 name = "cherami"
-dynamic = ["version"]
-description = "Add your description here"
+version = "26.07.0"
+description = "Cherami - *SCAPE sample orchestration."
 readme = "README.md"
 authors = [
     { name = "Sam Sims", email = "samsimss98@gmail.com" },
-    { name = "Jess Friedersdorff", email = "jess.friedersdorff@ukhsa.gov.uk}
+    { name = "Jess Friedersdorff", email = "jess.friedersdorff@ukhsa.gov.uk" }
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -13,11 +13,9 @@ dependencies = [
     "climb-onyx-client>=4.8.2",
     "kubernetes>=33.1.0",
     "varys-client==1.2.0",
-    "onyx-analysis-helper@git+https://github.com/ukhsa-collaboration/onyx-analysis-helper.git@v0.6.0"
+    "onyx-analysis-helper@git+https://github.com/ukhsa-collaboration/onyx-analysis-helper.git@v0.6.1"
 ]
 
-[tool.setuptools.dynamic]
-version = { attr = "cherami.__version__" }
 
 [project.scripts]
 cherami = "cherami.main:cli"
