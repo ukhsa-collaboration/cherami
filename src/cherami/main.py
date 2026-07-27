@@ -4,6 +4,10 @@ import click
 
 from cherami import subcommands
 
+from ._version import __codename__, __version__
+
+version_codename = f"v{__version__}, codename {__codename__}"
+
 
 @click.group()
 @click.option(
@@ -20,6 +24,7 @@ from cherami import subcommands
     ),
     default="INFO",
 )
+@click.version_option(version_codename, "--version", "-V")
 @click.pass_context
 def cli(
     click_context: click.Context,

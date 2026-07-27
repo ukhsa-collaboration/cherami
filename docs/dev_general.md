@@ -17,7 +17,7 @@ It was decided that SemVer didn't suit Cherami, so instead Cherami will use CalV
 
 `YY.MM.PATCH "code name"`
 
-The `pyproject.toml` holds the version of the Cherami codebase, and the version (and human readable codename as a comment) is also stored in `src.__init__.py`.
+The `pyproject.toml` holds the version of the Cherami codebase, and the version and human readable codename is also stored in `src._version.py` which is accessed when using the version cherami CLI argument.
 The release tag is the version `vYY.MM.PATCH`. The release title is `YY.MM.PATCH "code name"`. Release notes should define the version and codename, like in the codebase.
 The container is then referenced by the release tag.
 
