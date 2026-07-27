@@ -197,17 +197,21 @@ class OrangeBoxWorker(Worker):
             # present
             if priority_message:
                 message = priority_message
+                logger.info("Consuming from priority queue.")
                 if rerun_message:
                     self._varys_client.nack_message(rerun_message)
                 if main_message:
                     self._varys_client.nack_message(main_message)
             elif main_message:
                 message = main_message
+                logger.info("Consuming from main queue.")
                 if rerun_message:
                     self._varys_client.nack_message(rerun_message)
             elif rerun_message:
                 message = rerun_message
-
+                logger.info("Consuming from rerun queue.")
+            else:
+                message = None
             return message
 
     def on_success(self, message: Any, context: PipelineContext) -> None:
