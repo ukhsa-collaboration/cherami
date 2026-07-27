@@ -2,9 +2,7 @@ from pathlib import Path
 
 import click
 
-from cherami import subcommands
-
-from ._version import __codename__, __version__
+from cherami import __codename__, __version__, subcommands
 
 version_codename = f"v{__version__}, codename {__codename__}"
 
