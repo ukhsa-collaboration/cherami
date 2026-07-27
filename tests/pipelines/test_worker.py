@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import pytest
+from conftest import MockMessage
 
 from cherami.config import WorkerConfig
 from cherami.pipelines.pipeline import Pipeline
@@ -46,16 +47,9 @@ def worker(mock_worker_config, mock_pipeline, tmp_path):
     )
 
 
-class MockMessage:
-    def __init__(self, body):
-        self.body = body
-
-
-def test_parse_message_valid(worker):
-    payload = {"climb_id": "C123ABC", "match_uuid": "JOB123", "test": "test2"}
-    message = MockMessage(body=json.dumps(payload))
+def test_parse_message_valid(worker, message):
     parsed_payload, climb_id, job_uuid = worker._parse_message(message)
-
+    payload = {"climb_id": "C123ABC", "match_uuid": "JOB123", "test": "test"}
     assert parsed_payload == payload
     assert climb_id == "C123ABC"
     assert job_uuid == "JOB123"
