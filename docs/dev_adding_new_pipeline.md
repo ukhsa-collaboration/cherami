@@ -196,7 +196,7 @@ To do this, subclass `Worker` and override the relevant hooks:
 - `on_success(message, payload)`
 - `on_retry(message)`
 - `on_sample_failure(message)`
-- `_get_message()`
+- `get_message()`
 
 Return your new subclass from `build_worker` in your pipeline module.
 
