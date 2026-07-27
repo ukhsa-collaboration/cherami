@@ -171,48 +171,48 @@ class OrangeBoxWorker(Worker):
 
         Returns: one varys_client message object.
         """
-        while True:
-            priority_message: Any = self._varys_client.receive(
-                exchange=self.priority_exchange,
-                queue_suffix=self.priority_queue_suffix,
-                prefetch_count=1,
-                timeout=1,
-            )
 
-            main_message: Any = self._varys_client.receive(
-                exchange=self.listen_exchange,
-                queue_suffix=self.listen_queue_suffix,
-                prefetch_count=1,
-                timeout=1,
-            )
-            # low priority rerun queue
-            rerun_message: Any = self._varys_client.receive(
-                exchange=self.rerun_exchange,
-                queue_suffix=self.rerun_queue_suffix,
-                prefetch_count=1,
-                timeout=1,
-            )
+        priority_message: Any = self._varys_client.receive(
+            exchange=self.priority_exchange,
+            queue_suffix=self.priority_queue_suffix,
+            prefetch_count=1,
+            timeout=1,
+        )
 
-            # Handle the message that is returned, nack any other messages if
-            # present
-            if priority_message:
-                message = priority_message
-                logger.info("Consuming from priority queue.")
-                if rerun_message:
-                    self._varys_client.nack_message(rerun_message)
-                if main_message:
-                    self._varys_client.nack_message(main_message)
-            elif main_message:
-                message = main_message
-                logger.info("Consuming from main queue.")
-                if rerun_message:
-                    self._varys_client.nack_message(rerun_message)
-            elif rerun_message:
-                message = rerun_message
-                logger.info("Consuming from rerun queue.")
-            else:
-                message = None
-            return message
+        main_message: Any = self._varys_client.receive(
+            exchange=self.listen_exchange,
+            queue_suffix=self.listen_queue_suffix,
+            prefetch_count=1,
+            timeout=1,
+        )
+        # low priority rerun queue
+        rerun_message: Any = self._varys_client.receive(
+            exchange=self.rerun_exchange,
+            queue_suffix=self.rerun_queue_suffix,
+            prefetch_count=1,
+            timeout=1,
+        )
+
+        # Handle the message that is returned, nack any other messages if
+        # present
+        if priority_message:
+            message = priority_message
+            logger.info("Consuming from priority queue.")
+            if rerun_message:
+                self._varys_client.nack_message(rerun_message)
+            if main_message:
+                self._varys_client.nack_message(main_message)
+        elif main_message:
+            message = main_message
+            logger.info("Consuming from main queue.")
+            if rerun_message:
+                self._varys_client.nack_message(rerun_message)
+        elif rerun_message:
+            message = rerun_message
+            logger.info("Consuming from rerun queue.")
+        else:
+            message = None
+        return message
 
     def on_success(self, message: Any, context: PipelineContext) -> None:
         """Handle successful orange box pipeline completions.
