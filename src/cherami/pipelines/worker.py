@@ -20,6 +20,10 @@ from cherami.utils import init_kubernetes, init_varys
 logger = logging.getLogger(__name__)
 
 
+class WorkerError(Exception):
+    """Error Occurs in worker."""
+
+
 @dataclass
 class PipelineResult:
     """Result of a pipeline execution attempt."""
@@ -64,7 +68,7 @@ class Worker:
         publish_exchange: Optional exchange for completion messages.
         rerun_queue_suffix: Optional queue suffix for upstream rerun.
         rerun_exchange: Optional exchange for upstream rerun (NOTE: this is
-        not used to push messages to).
+            not used to push messages to).
         priority_queue_suffix: Optional queue suffix for priority queue.
         priority_exchange: Optional exchange name for the priority messages.
         _config_path: Path to the worker configuration file.
@@ -286,6 +290,20 @@ class Worker:
             duration=duration,
         )
 
+    def validate(self) -> None:
+        """
+        Pre-flight checks for the worker config.
+
+        Raises:
+            WorkerException - if any checks fail
+        """
+        # Publish exchange and queue cannot be None
+        if not self.listen_exchange or not self.listen_queue_suffix:
+            raise WorkerError(
+                "Listen exchange and/or queue suffic has not been set, "
+                "cannot consume messages."
+            )
+
     def get_message(self) -> Any | None:
         """
         Default message consumption is to listen to one queue.
@@ -314,7 +332,9 @@ class Worker:
                 initialisation failure.
             ValueError: If an incoming message cannot be parsed.
             Exception: If an unexpected error occurs and the worker exits.
+            WorkerError: if the queues are not set up adequately.
         """
+        self.validate()
         logger.info("Serving worker: %s", self.pipeline.config.name)
         self._varys_client = init_varys(
             self.varys_config_path,
