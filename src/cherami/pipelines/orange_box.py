@@ -9,7 +9,7 @@ from cherami.pipelines.pipeline import (
     PipelineContext,
     get_context_from_record,
 )
-from cherami.pipelines.worker import Worker
+from cherami.pipelines.worker import Worker, WorkerError
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +160,55 @@ class OrangeBoxPipeline(Pipeline):
 
 
 class OrangeBoxWorker(Worker):
+    def validate(self) -> None:
+        """
+        Overwrite method to check expected queues - priority and exchange.
+
+        Allows backwards compatbility (without running rerun and priority), but
+        will write a warning in the log.
+
+        If either the exchange OR queue suffix is given but the other is not,
+        this raises an error.
+
+        Acts as safety net check rather than user friendly descriptive UI.
+
+        Raises:
+            WorkerError - if any required checks fail.
+        """
+        # Listen
+        super().validate()
+
+        # Publish
+        if not self.publish_exchange or not self.publish_queue_suffix:
+            raise WorkerError(
+                "Orange box worker expects publish exchange and publish "
+                "queue suffix set - check worker config."
+            )
+
+        # Priority
+        if not self.priority_exchange and not self.priority_queue_suffix:
+            logger.warning(
+                "Orange Box Priority Message Queue not set, priority "
+                "messages will NOT be consumed."
+            )
+        if bool(self.priority_exchange) != bool(self.priority_queue_suffix):
+            raise WorkerError(
+                "For priority queue consumption, both the priority exchange "
+                "AND priority queue suffix must be set, check worker config. "
+            )
+
+        # Rerun
+        if not self.rerun_exchange and not self.rerun_queue_suffix:
+            logger.warning(
+                "Orange Box Rerun Message Queue not set, rerun "
+                "messages will NOT be consumed."
+            )
+        if bool(self.rerun_exchange) != bool(self.rerun_queue_suffix):
+            raise WorkerError(
+                "For rerun queue consumption, both the rerun exchange "
+                "AND rerun queue suffix must be set, check worker config. "
+            )
+
     def get_message(self) -> Any | None:
         """
         Overwrites the default Worker method to handle priority and rerun
