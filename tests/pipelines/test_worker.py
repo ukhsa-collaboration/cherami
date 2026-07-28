@@ -7,7 +7,7 @@ from conftest import MockMessage
 
 from cherami.config import WorkerConfig
 from cherami.pipelines.pipeline import Pipeline
-from cherami.pipelines.worker import Worker
+from cherami.pipelines.worker import Worker, WorkerError
 
 
 @pytest.fixture
@@ -97,3 +97,14 @@ def test_create_result_with_timing(worker):
     assert result.duration == 5.5
     assert result.start_time == "1970-01-01T00:01:40+00:00"
     assert result.end_time == "1970-01-01T00:01:45.500000+00:00"
+
+
+def test_validate(worker):
+    worker.validate()
+
+
+def test_validate_raises(worker):
+    worker.listen_exchange = None
+    with pytest.raises(WorkerError) as we:
+        worker.validate()
+    assert "cannot consume messages" in str(we.value)
