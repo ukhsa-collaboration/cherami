@@ -321,7 +321,23 @@ class Worker:
             self.varys_log_path,
             "cherami",
         )
-        logger.info("Worker listening on exchange %s", self.listen_exchange)
+        logger.info(
+            "Worker listening on main exchange %s queue %s ",
+            self.listen_exchange,
+            self.listen_queue_suffix,
+        )
+        if self.rerun_exchange:
+            logger.info(
+                "Worker listening on rerun exchange %s queue %s ",
+                self.rerun_exchange,
+                self.rerun_queue_suffix,
+            )
+        if self.priority_exchange:
+            logger.info(
+                "Worker listening on priority exchange %s queue %s ",
+                self.priority_exchange,
+                self.priority_queue_suffix,
+            )
         self._runner = PipelineRunner(
             k8_api=init_kubernetes(),
         )
