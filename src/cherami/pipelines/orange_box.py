@@ -162,22 +162,25 @@ class OrangeBoxPipeline(Pipeline):
 class OrangeBoxWorker(Worker):
     def get_message(self) -> Any | None:
         """
-        Overwrites the default Worker method to handle priority queues.
-        Orange Box has three queues to consume from. The main listening queue
-        is the main ingest queue, plus there is a low priority rerun queue for
+        Overwrites the default Worker method to handle priority and rerun
+        queues if provided in config.
+        Orange Box has three queues to consume from. The listening queue is the
+        main ingest queue, plus there is a low priority rerun queue for
         messages that are being rerun through the entire pipeline, and finally
         there is a high priority rerun queue local to orange box only, such
         that everything downstream of chimera can be rerun.
 
         Returns: one varys_client message object.
         """
-
-        priority_message: Any = self._varys_client.receive(
-            exchange=self.priority_exchange,
-            queue_suffix=self.priority_queue_suffix,
-            prefetch_count=1,
-            timeout=1,
-        )
+        if self.priority_exchange:
+            priority_message: Any = self._varys_client.receive(
+                exchange=self.priority_exchange,
+                queue_suffix=self.priority_queue_suffix,
+                prefetch_count=1,
+                timeout=1,
+            )
+        else:
+            priority_message = None
 
         main_message: Any = self._varys_client.receive(
             exchange=self.listen_exchange,
@@ -185,13 +188,16 @@ class OrangeBoxWorker(Worker):
             prefetch_count=1,
             timeout=1,
         )
-        # low priority rerun queue
-        rerun_message: Any = self._varys_client.receive(
-            exchange=self.rerun_exchange,
-            queue_suffix=self.rerun_queue_suffix,
-            prefetch_count=1,
-            timeout=1,
-        )
+        if self.rerun_exchange:
+            # low priority rerun queue
+            rerun_message: Any = self._varys_client.receive(
+                exchange=self.rerun_exchange,
+                queue_suffix=self.rerun_queue_suffix,
+                prefetch_count=1,
+                timeout=1,
+            )
+        else:
+            rerun_message = None
 
         # Handle the message that is returned, nack any other messages if
         # present
