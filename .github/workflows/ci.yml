@@ -1,7 +1,7 @@
 name: Tests
 on:
   push:
-    branches: [ main ]
+    branches: [ main, release/** ]
   pull_request:
   workflow_dispatch:
 
@@ -40,5 +40,3 @@ jobs:
         run: uv sync --locked --all-extras --dev
       - name: Run tests
         run: uv run pytest
-        
-
