@@ -7,6 +7,7 @@ import pytest
 
 from cherami.config import PipelineConfig, WorkerConfig
 from cherami.pipelines.orange_box import OrangeBoxPipeline, OrangeBoxWorker
+from cherami.pipelines.worker import WorkerError
 
 
 @pytest.fixture
@@ -235,3 +236,77 @@ def test_orange_box_worker_get_message(
         assert "C456DEF" in received_message.body
     else:
         assert not received_message
+
+
+def test_validate(orange_box_worker):
+    orange_box_worker.validate()
+
+
+@pytest.mark.parametrize(
+    ("exchange", "queue", "error", "msg"),
+    [
+        (None, None, True, "check worker config"),
+        ("test_publish_exchange", None, True, "check worker config"),
+        (None, "test_publish_queue_suffix", True, "check worker config"),
+        ("test_publish_exchange", "test_publish_queue_suffix", False, ""),
+    ],
+)
+def test_validate_publish(orange_box_worker, exchange, queue, error, msg):
+    orange_box_worker.publish_exchange = exchange
+    orange_box_worker.publish_queue_suffix = queue
+    if error:
+        with pytest.raises(WorkerError) as we:
+            orange_box_worker.validate()
+        assert msg in str(we.value)
+    else:
+        orange_box_worker.validate()
+
+
+@pytest.mark.parametrize(
+    ("exchange", "queue", "error", "msg"),
+    [
+        (None, None, "warn", "messages will NOT be consumed"),
+        ("test_priority_exchange", None, True, "check worker config"),
+        (None, "test_priority_queue_suffix", True, "check worker config"),
+        ("test_priority_exchange", "test_priority_queue_suffix", False, ""),
+    ],
+)
+def test_validate_priority(
+    orange_box_worker, exchange, queue, error, msg, caplog
+):
+    orange_box_worker.priority_exchange = exchange
+    orange_box_worker.priority_queue_suffix = queue
+    if error == "warn":
+        orange_box_worker.validate()
+        assert msg in caplog.text
+    elif error:
+        with pytest.raises(WorkerError) as we:
+            orange_box_worker.validate()
+        assert msg in str(we.value)
+    else:
+        orange_box_worker.validate()
+
+
+@pytest.mark.parametrize(
+    ("exchange", "queue", "error", "msg"),
+    [
+        (None, None, "warn", "messages will NOT be consumed"),
+        ("test_rerun_exchange", None, True, "check worker config"),
+        (None, "test_rerun_queue_suffix", True, "check worker config"),
+        ("test_rerun_exchange", "test_rerun_queue_suffix", False, ""),
+    ],
+)
+def test_validate_rerun(
+    orange_box_worker, exchange, queue, error, msg, caplog
+):
+    orange_box_worker.rerun_exchange = exchange
+    orange_box_worker.rerun_queue_suffix = queue
+    if error == "warn":
+        orange_box_worker.validate()
+        assert msg in caplog.text
+    elif error:
+        with pytest.raises(WorkerError) as we:
+            orange_box_worker.validate()
+        assert msg in str(we.value)
+    else:
+        orange_box_worker.validate()
