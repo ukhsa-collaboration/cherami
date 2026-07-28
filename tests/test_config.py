@@ -111,6 +111,19 @@ def test_worker_config_allow_none_optionals(valid_worker):
     assert config.publish_exchange is None
 
 
+@pytest.mark.parametrize("field", ["listen_exchange", "listen_queue_suffix"])
+def test_worker_config_rejects_none(valid_worker, field):
+    valid_worker[field] = None
+    with pytest.raises(
+        ValueError, match=f"Worker config field cannot be null: {field}"
+    ):
+        WorkerConfig.from_dict(
+            valid_worker,
+            Path("/idont/exist/config.json"),
+            "hash",
+        )
+
+
 def test_worker_config_fail(valid_worker):
     del valid_worker["listen_exchange"]
     with pytest.raises(

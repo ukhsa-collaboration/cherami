@@ -88,9 +88,14 @@ class WorkerConfig:
         """Returns a WorkerConfig parsed from a raw config dictionary.
 
         Raises:
-            ValueError: If a required field is missing.
+            ValueError: If a required field is missing or contains invalid value.
         """
         try:
+            for field in ("listen_exchange", "listen_queue_suffix"):
+                if raw_config[field] is None:
+                    raise ValueError(
+                        f"Worker config field cannot be null: {field}"
+                    )
             return cls(
                 listen_exchange=str(raw_config["listen_exchange"]),
                 listen_queue_suffix=str(raw_config["listen_queue_suffix"]),
