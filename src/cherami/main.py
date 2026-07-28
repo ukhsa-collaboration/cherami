@@ -1,10 +1,24 @@
 from pathlib import Path
 
-import click
+import rich_click as click
 
-from cherami import __codename__, __version__, subcommands
+from cherami import PIGEON, __codename__, __version__, subcommands
 
 version_codename = f"v{__version__}, codename {__codename__}"
+
+
+def _print_version(
+    click_context: click.Context,
+    parameter: click.Parameter,
+    value: bool,  # noqa: FBT001
+) -> None:
+    if not value:
+        return
+
+    click.echo(f"{click_context.info_name}, version {version_codename}")
+    if parameter.name == "version":
+        click.echo("\n" + PIGEON)
+    click_context.exit()
 
 
 @click.group()
@@ -22,7 +36,19 @@ version_codename = f"v{__version__}, codename {__codename__}"
     ),
     default="INFO",
 )
-@click.version_option(version_codename, "--version", "-V")
+@click.option(
+    "--version",
+    is_flag=True,
+    expose_value=False,
+    callback=_print_version,
+)
+@click.option(
+    "-V",
+    "version_short",
+    is_flag=True,
+    expose_value=False,
+    callback=_print_version,
+)
 @click.pass_context
 def cli(
     click_context: click.Context,

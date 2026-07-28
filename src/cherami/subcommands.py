@@ -2,7 +2,7 @@ import json
 import logging
 from pathlib import Path
 
-import click
+import rich_click as click
 
 from cherami.config import CheramiConfig, load_config
 from cherami.pipelines import load_pipeline_module
