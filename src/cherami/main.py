@@ -2,7 +2,9 @@ from pathlib import Path
 
 import click
 
-from cherami import subcommands
+from cherami import __codename__, __version__, subcommands
+
+version_codename = f"v{__version__}, codename {__codename__}"
 
 
 @click.group()
@@ -20,6 +22,7 @@ from cherami import subcommands
     ),
     default="INFO",
 )
+@click.version_option(version_codename, "--version", "-V")
 @click.pass_context
 def cli(
     click_context: click.Context,

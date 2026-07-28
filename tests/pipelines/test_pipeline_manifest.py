@@ -7,7 +7,7 @@ from cherami.pipelines.pipeline import Pipeline
 
 
 class TestPipeline(Pipeline):
-    def generate_samplesheet(self, samples, job_id, output_filepath):
+    def generate_samplesheet(self, samples, job_id, output_filepath, context):
         pass
 
 
