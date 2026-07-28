@@ -9,11 +9,11 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "click>=8.1.8",
     "climb-onyx-client>=4.8.2",
     "kubernetes>=33.1.0",
     "varys-client==1.2.0",
-    "onyx-analysis-helper@git+https://github.com/ukhsa-collaboration/onyx-analysis-helper.git@v0.6.1"
+    "onyx-analysis-helper@git+https://github.com/ukhsa-collaboration/onyx-analysis-helper.git@v0.6.1",
+    "rich-click>=1.9.8",
 ]
 
 

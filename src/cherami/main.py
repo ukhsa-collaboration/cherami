@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import click
+import rich_click as click
 
 from cherami import __codename__, __version__, subcommands
 
