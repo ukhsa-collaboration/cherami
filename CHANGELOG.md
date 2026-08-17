@@ -10,7 +10,7 @@
 * Orange box `get_message` method overwritten to consume from priority and rerun queue.
 * Unit tests for the orange box `get_message`.
 * information to the docs to describe changes.
-* Changelog entry
+* onyx analysis helper library log messages added to the cherami log file.
 
 ## Changed
 * some fixtures were moved to conftest and called from there for unit tests.
