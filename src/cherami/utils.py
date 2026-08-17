@@ -34,6 +34,11 @@ def init_logging(log_path: Path | None, log_level: str) -> None:
     handler.setLevel(log_level)
     logger.addHandler(handler)
 
+    oa_logger = logging.getLogger("onyx_analysis_helper")
+    # Hardcode error-level only messages for external lib.
+    oa_logger.setLevel("ERROR")
+    oa_logger.addHandler(handler)
+
 
 def init_varys(config_path: Path, log_path: Path, profile: str) -> Varys:
     """Initialise a Varys client for RabbitMQ.
