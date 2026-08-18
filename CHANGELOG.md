@@ -1,6 +1,6 @@
 # Changelog
 
-## unreleased v26.8 "Dutch Beauty"
+## v26.8 "Dutch Beauty"
 
 ## Added:
 * rich_click wraps around click for neatly formatted help. Version CLI arg updated.
