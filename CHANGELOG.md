@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased]
+
+## [v26.9]
+
+### Added:
+- 'server' param to nextflow command built in cherami
+- documentation for 'server' param.
+
+### Changed
+- unit test for pipeline manifest.
+
+---
+---
+
 ## v26.8 "Dutch Beauty"
 
 ## Added:
