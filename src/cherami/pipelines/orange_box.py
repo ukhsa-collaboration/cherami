@@ -3,6 +3,11 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from onyx.exceptions import (
+    OnyxConnectionError,
+    OnyxRequestError,
+)
+
 from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
 from cherami.pipelines.pipeline import (
     Pipeline,
@@ -10,7 +15,11 @@ from cherami.pipelines.pipeline import (
     get_context_from_record,
 )
 from cherami.pipelines.worker import Worker
-from cherami.utils import WorkerStopping
+from cherami.utils import (
+    NonRetryablePipelineError,
+    RetryablePipelineError,
+    WorkerStopping,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -85,19 +94,22 @@ class OrangeBoxPipeline(Pipeline):
 
         analysis_tables: dict[str | None, Any | None]
         exitcode: int
-        analysis_tables, exitcode = oa.get_analysis_records(
-            sample_id=context.climb_id,
-            server=context.server,
-            fields=["methods", "analysis_id"],
-        )
-
-        # If we cannot get to onyx, exit early
-        if exitcode != 0:
-            logger.error(
-                "Cannot query Onyx for analyses for sample %s.",
-                context.climb_id,
+        try:
+            analysis_tables, exitcode = oa.get_analysis_records(
+                sample_id=context.climb_id,
+                server=context.server,
+                fields=["methods", "analysis_id"],
+                silence=False,
             )
-            raise RuntimeError("Cannot query onyx - check logs for reasons.")
+            logger.debug("Querying onyx for sample %s", context.climb_id)
+        # If we cannot connect to onyx, try again, maybe it's a blip?
+        except OnyxConnectionError as e:
+            logger.error("Retryable Onyx connection error: %s.", e)
+            raise RetryablePipelineError from e
+        # If we cannot make the request:
+        except OnyxRequestError as r:
+            logger.error("Nonretryable Onyx Request Error: %s", r)
+            raise NonRetryablePipelineError from r
 
         # If there are no analysis tables, just run:
         if not analysis_tables:
