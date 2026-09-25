@@ -9,17 +9,17 @@ from onyx.exceptions import (
 )
 
 from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
+from cherami.exceptions import (
+    NonRetryableError,
+    NonRetryablePipelineError,
+    RetryablePipelineError,
+)
 from cherami.pipelines.pipeline import (
     Pipeline,
     PipelineContext,
     get_context_from_record,
 )
 from cherami.pipelines.worker import Worker
-from cherami.utils import (
-    NonRetryablePipelineError,
-    RetryablePipelineError,
-    WorkerStopping,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,7 @@ class OrangeBoxWorker(Worker):
 
         # Publish
         if not self.publish_exchange or not self.publish_queue_suffix:
-            raise WorkerStopping(
+            raise NonRetryableError(
                 "Orange box worker expects publish exchange and publish "
                 "queue suffix set - check worker config."
             )
@@ -205,7 +205,7 @@ class OrangeBoxWorker(Worker):
                 "messages will NOT be consumed."
             )
         if bool(self.priority_exchange) != bool(self.priority_queue_suffix):
-            raise WorkerStopping(
+            raise NonRetryableError(
                 "For priority queue consumption, both the priority exchange "
                 "AND priority queue suffix must be set, check worker config. "
             )
@@ -217,7 +217,7 @@ class OrangeBoxWorker(Worker):
                 "messages will NOT be consumed."
             )
         if bool(self.rerun_exchange) != bool(self.rerun_queue_suffix):
-            raise WorkerStopping(
+            raise NonRetryableError(
                 "For rerun queue consumption, both the rerun exchange "
                 "AND rerun queue suffix must be set, check worker config. "
             )
