@@ -10,25 +10,25 @@ from onyx import OnyxConfig, OnyxEnv
 from varys import Varys
 
 
-class WorkerStopping(RuntimeError):  # noqa: N818
-    """Error Occurs in worker and worker cannot complete."""
+def init_logging(
+    log_path: Path | None,
+    log_level: str,
+    name: str = "cherami",
+    when: str = "midnight",
+) -> logging.Logger:
+    """
+    Initiate logging with given name, log file and rollover time.
 
-
-class RetryableWorkerError(RuntimeError):
-    """Error occurs in Worker but error likely intermittent, and therefore
-    eligible for retry"""
-
-
-class RetryablePipelineError(RuntimeError):
-    """Pipeline error eligible for retry."""
-
-
-class NonRetryablePipelineError(RuntimeError):
-    """Pipeline error not eligible for retry."""
-
-
-def init_logging(log_path: Path | None, log_level: str) -> None:
-    logger = logging.getLogger("cherami")
+    Args:
+        log_path (Path | None): Path to log file
+        log_level (str): Level to log (INFO, WARNING, DEBUG etc)
+        name (str, optional): Name of the logger. Defaults to "cherami".
+        when (str, optional): When the log should rollover. Defaults to
+            "midnight".
+    Returns:
+        logging.Logger object.
+    """
+    logger = logging.getLogger(name)
     logger.setLevel(log_level)
     logger.handlers.clear()
     logger.propagate = False
@@ -37,7 +37,7 @@ def init_logging(log_path: Path | None, log_level: str) -> None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         handler = TimedRotatingFileHandler(
             filename=log_path,
-            when="midnight",
+            when=when,
             utc=True,
         )
     else:
@@ -50,6 +50,7 @@ def init_logging(log_path: Path | None, log_level: str) -> None:
     handler.setFormatter(formatter)
     handler.setLevel(log_level)
     logger.addHandler(handler)
+    return logger
 
 
 def init_varys(
