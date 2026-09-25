@@ -1,13 +1,16 @@
 import csv
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from onyx.exceptions import OnyxConnectionError, OnyxRequestError
+
 from cherami.config import GlobalConfig, PipelineConfig
-from cherami.utils import RetryableWorkerError, WorkerStopping
+from cherami.exceptions import NonRetryableError, RetryableError
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +33,14 @@ class PipelineContext:
     should not be stored on the pipeline class.
 
     Attributes:
-            payload (dict[str, Any]):the json payload sent in the message.
-            server (str): server for the onyx database
-            pipeline_version (str): version of the current pipeline.
-            climb_id (str): current sample ID, parsed from payload
-            job_uuid (str): - The job UUID (match_uuid).
+        payload (dict[str, Any]):the json payload sent in the message.
+        server (str): server for the onyx database
+        pipeline_version (str): version of the current pipeline.
+        climb_id (str): current sample ID, parsed from payload
+        job_uuid (str): - The job UUID (match_uuid).
 
-            onyx_versions_hash (str): part of the upstream context,
-                init as None.
-            orange_box_version (str): part of the upstream context,
-                init as None.
+        onyx_versions_hash (str): part of the upstream context, init as None.
+        orange_box_version (str): part of the upstream context, init as None.
     """
 
     def __init__(
@@ -55,7 +56,8 @@ class PipelineContext:
             pipeline_version (str): version of the current pipeline.
 
         Raises:
-            ValueError: If the payload is missing required fields.
+            ValueError: If the payload is missing required fields or climb ID
+                is malformed.
         """
         # shared attributes:
         self.payload: dict[str, Any] = payload
@@ -74,6 +76,9 @@ class PipelineContext:
         except KeyError as k:
             raise ValueError(f"Message missing {k}") from k
 
+        if not bool(re.fullmatch("C-[A-F0-9]{10}", self.climb_id)):
+            raise ValueError("Climb id %s is malformed. Cannot build context.")
+
     def get_upstream_context_hash(self) -> str:
         """
         Query Onyx for the current onyx versions, then calculate and return
@@ -83,26 +88,45 @@ class PipelineContext:
             - string - onyx versions hash.
 
         Raises:
-            - RuntimeError - if onyx cannot be reached.
+            - RetryableWorkerError - if onyx cannot be reached likely
+                only temporarily.
+            - NonRetryableWorkerError - if onyx cannot be reached for other
+                reasons that retry will not help.
         """
         from onyx_analysis_helper import onyx_analysis_helper_functions as oa
 
-        _, current_onyx_versions, exitcode = (
-            oa.get_data_and_versions_from_onyx(
-                sample_id=self.climb_id,
-                server=self.server,
-                fields=["climb_id"],
+        try:
+            _, current_onyx_versions, exitcode = (
+                oa.get_data_and_versions_from_onyx(
+                    sample_id=self.climb_id,
+                    server=self.server,
+                    fields=["climb_id"],
+                    silence=False,
+                )
             )
-        )
+        # If we cannot connect to onyx, try again, maybe it's a blip?
+        except OnyxConnectionError as e:
+            logger.error(
+                "Cannot query Onyx for upstream context. "
+                "Retryable Onyx connection error: %s.",
+                e,
+            )
+            raise RetryableError from e
+        # If we cannot make the request:
+        except OnyxRequestError as r:
+            logger.error(
+                "Cannot query Onyx for upstream context. "
+                "Nonretryable Onyx Request Error: %s",
+                r,
+            )
+            raise NonRetryableError from r
 
         if exitcode != 0:
             logger.error(
-                "Cannot query Onyx for upstream context, see previous "
-                "logs for reason."
+                "Encountered unhandled error querying Onyx for upstream "
+                "context, will retry."
             )
-            raise RetryableWorkerError(
-                "Onyx cannot be queried for upstream context - check logs."
-            )
+            raise RetryableError
 
         return oa._calculate_versions_hash(current_onyx_versions)
 
@@ -462,10 +486,9 @@ class PathCharPipeline(Pipeline):
 
         Raises:
             RetryableWorkerError: If Onyx cannot be reached
-            WorkerStopping: the upstream context cherami sent does not match the
-                current onyx state.
-            ValueError: cannot get orange box version and Onyx Hash from
-                payload.
+            NonRetryableWorkerError: the upstream context cherami sent does not
+                match the current onyx state, orcannot get orange box version
+                and Onyx Hash from payload.
         """
         # Populate the context object
         context: PipelineContext = super().build_context(payload)
@@ -484,13 +507,13 @@ class PathCharPipeline(Pipeline):
                     context.onyx_versions_hash,
                     payload["onyx_versions_hash"],
                 )
-                raise WorkerStopping(
+                raise NonRetryableError(
                     "Current onyx state does not match the upstream "
                     "context of the cherami state. Cannot proceed."
                 )
             context.orange_box_version = payload["orange_box_version"]
         except KeyError as k:
-            raise ValueError(
+            raise NonRetryableError(
                 "%s not available in the message payload, "
                 "cannot decipher upstream context.",
                 k,
@@ -553,9 +576,7 @@ class PathCharPipeline(Pipeline):
                 "Cannot query Onyx for analyses for sample %s.",
                 context.climb_id,
             )
-            raise RetryableWorkerError(
-                "Cannot query onyx - check logs for reasons."
-            )
+            raise RetryableError("Cannot query onyx - check logs for reasons.")
 
         # 2) Get the analysis tables associated with the pipeline:
         pipeline_analysis_tables = {
