@@ -1,5 +1,17 @@
 # Changelog
 
+## [unreleased]
+## [v26.9]
+
+### Changed:
+- varys version bumped to v1.3.0
+
+### Added:
+- 'managed_by' annotation in job metadata added.
+
+---
+---
+
 ## v26.8 "Dutch Beauty"
 
 ## Added:
