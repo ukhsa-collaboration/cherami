@@ -8,7 +8,7 @@ from cherami.pipelines.worker import PipelineResult
 
 @pytest.fixture
 def audit_db(tmp_path):
-    db_path = tmp_path / "audit.db"
+    db_path = tmp_path / "audit" / "audit.db"
     return AuditDB(db_path)
 
 
