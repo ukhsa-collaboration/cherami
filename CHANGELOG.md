@@ -4,10 +4,12 @@
 ## [v26.9]
 
 ### Changed:
-- varys version bumped to v1.3.0
+- varys version bumped to v1.3.0.
+- audit db unit test temp path.
 
 ### Added:
 - 'managed_by' annotation in job metadata added.
+- directory creation with pathlib for audit_db path if it don't exist.
 
 ---
 ---
