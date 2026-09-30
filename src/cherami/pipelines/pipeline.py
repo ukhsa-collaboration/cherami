@@ -10,7 +10,12 @@ from typing import Any
 from onyx.exceptions import OnyxConnectionError, OnyxRequestError
 
 from cherami.config import GlobalConfig, PipelineConfig
-from cherami.exceptions import NonRetryableError, RetryableError
+from cherami.exceptions import (
+    CheramiError,
+    ConfigurationError,
+    RetryableError,
+    SampleError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +95,7 @@ class PipelineContext:
         Raises:
             - RetryableWorkerError - if onyx cannot be reached likely
                 only temporarily.
-            - NonRetryableWorkerError - if onyx cannot be reached for other
+            - CheramiError - if onyx cannot be reached for other
                 reasons that retry will not help.
         """
         from onyx_analysis_helper import onyx_analysis_helper_functions as oa
@@ -119,7 +124,7 @@ class PipelineContext:
                 "Nonretryable Onyx Request Error: %s",
                 r,
             )
-            raise NonRetryableError from r
+            raise CheramiError from r
 
         if exitcode != 0:
             logger.error(
@@ -316,7 +321,7 @@ class Pipeline(ABC):
         Returns:
             List of environment variable dictionaries in a format for the pod spec.
         Raises:
-            RuntimeError: If any required environment variables are missing.
+            ConfigurationError: If any required environment variables are missing.
             KeyError: If required paths are missing from `job_dirs`.
         """
         required_env_vars = [
@@ -332,7 +337,7 @@ class Pipeline(ABC):
         ]
         if missing_env_vars:
             missing_vars_display = ", ".join(missing_env_vars)
-            raise RuntimeError(
+            raise ConfigurationError(
                 f"Missing required environment variables: {missing_vars_display}"
             )
 
@@ -367,7 +372,7 @@ class Pipeline(ABC):
             Kubernetes Job manifest dictionary to submit via `create_namespaced_job`.
 
         Raises:
-            RuntimeError: If required environment variables are missing.
+            ConfigurationError: If required environment variables are missing.
             KeyError: If required paths are missing from `job_dirs`.
         """
         job_name = f"{self.config.name}-{job_id}"
@@ -485,9 +490,9 @@ class PathCharPipeline(Pipeline):
         context with the payload, if these do not match, exit.
 
         Raises:
-            RetryableWorkerError: If Onyx cannot be reached
-            NonRetryableWorkerError: the upstream context cherami sent does not
-                match the current onyx state, orcannot get orange box version
+            RetryableError: If Onyx cannot be reached
+            CheramiError: the upstream context cherami sent does not
+                match the current onyx state, or cannot get orange box version
                 and Onyx Hash from payload.
         """
         # Populate the context object
@@ -507,17 +512,15 @@ class PathCharPipeline(Pipeline):
                     context.onyx_versions_hash,
                     payload["onyx_versions_hash"],
                 )
-                raise NonRetryableError(
-                    "Current onyx state does not match the upstream "
-                    "context of the cherami state. Cannot proceed."
-                )
+                raise CheramiError("onyx-out-of-sync")
             context.orange_box_version = payload["orange_box_version"]
         except KeyError as k:
-            raise NonRetryableError(
+            logger.debug(
                 "%s not available in the message payload, "
                 "cannot decipher upstream context.",
                 k,
-            ) from k
+            )
+            raise SampleError("message-payload-error") from k
 
         return context
 
