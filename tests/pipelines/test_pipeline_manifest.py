@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from cherami.config import PipelineConfig
+from cherami.exceptions import ConfigurationError
 from cherami.pipelines.pipeline import Pipeline
 
 
@@ -92,7 +93,7 @@ def test_create_job_manifest_missing_env_vars(pipeline, job_dirs, monkeypatch):
     for var in ["ONYX_TOKEN", "ONYX_DOMAIN", "AWS_ACCESS_KEY_ID"]:
         monkeypatch.delenv(var, raising=False)
     with pytest.raises(
-        RuntimeError, match="Missing required environment variables"
+        ConfigurationError, match="Missing required environment variables"
     ):
         pipeline.create_job_manifest(
             job_id="JOB123",

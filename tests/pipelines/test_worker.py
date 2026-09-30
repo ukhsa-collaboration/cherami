@@ -4,8 +4,9 @@ import json
 import pytest
 from conftest import MockMessage
 
+from cherami.exceptions import SampleError
 from cherami.pipelines.pipeline import Pipeline
-from cherami.pipelines.worker import Worker, WorkerStopping
+from cherami.pipelines.worker import ConfigurationError, Worker
 
 
 @pytest.fixture
@@ -29,25 +30,29 @@ def worker(mock_complete_worker_config, mock_pipeline, tmp_path):
 
 def test_parse_message_valid(worker, message):
     parsed_payload, climb_id, job_uuid = worker._parse_message(message)
-    payload = {"climb_id": "C123ABC", "match_uuid": "JOB123", "test": "test"}
+    payload = {
+        "climb_id": "C-1234567890",
+        "match_uuid": "JOB123",
+        "test": "test",
+    }
     assert parsed_payload == payload
-    assert climb_id == "C123ABC"
+    assert climb_id == "C-1234567890"
     assert job_uuid == "JOB123"
 
 
-def test_parse_message_fail(worker):
+def test_parse_message_fail(worker, caplog):
     message = MockMessage(body="{iaminvalidjson###''][]")
-    with pytest.raises(ValueError, match="Invalid JSON"):
+    with pytest.raises(SampleError, match="invalid_message"):
         worker._parse_message(message)
+    assert "Invalid JSON in varys message" in caplog.text
 
 
-def test_parse_message_missing_field(worker):
+def test_parse_message_missing_field(worker, caplog):
     payload = {"climb_id": "C123ABC"}
     message = MockMessage(body=json.dumps(payload))
-    with pytest.raises(
-        ValueError, match="Message missing climb_id or match_uuid"
-    ):
+    with pytest.raises(SampleError, match="malformed_id_in_message"):
         worker._parse_message(message)
+    assert "is malformed. Cannot continue." in caplog.text
 
 
 def test_create_result_skip(worker):
@@ -83,15 +88,17 @@ def test_validate(worker):
     worker.validate()
 
 
-def test_validate_raises_listen(worker):
+def test_validate_raises_listen(worker, caplog):
     worker.listen_exchange = None
-    with pytest.raises(WorkerStopping) as we:
+    with pytest.raises(ConfigurationError) as we:
         worker.validate()
-    assert "cannot consume messages" in str(we.value)
+    assert "listen_exchange_config" in str(we.value)
+    assert "cannot consume messages" in caplog.text
 
 
-def test_validate_raises_dead_sample(worker):
+def test_validate_raises_dead_sample(worker, caplog):
     worker.dead_sample_exchange = None
-    with pytest.raises(WorkerStopping) as we:
+    with pytest.raises(ConfigurationError) as we:
         worker.validate()
-    assert "Check config" in str(we.value)
+    assert "dead_sample_exchange_config" in str(we.value)
+    assert "cannot continue" in caplog.text

@@ -6,8 +6,8 @@ from unittest.mock import Mock, patch
 import pytest
 
 from cherami.config import PipelineConfig
+from cherami.exceptions import ConfigurationError
 from cherami.pipelines.orange_box import OrangeBoxPipeline, OrangeBoxWorker
-from cherami.utils import WorkerStopping
 
 
 @pytest.fixture
@@ -83,7 +83,7 @@ def test_orange_box_build_context(
     """
     mock_onyx.return_value = mock_analysis_1.onyx_record
     context = orange_box_pipeline.build_context(mock_analysis_1.payload)
-    assert context.climb_id == "ID-123456"
+    assert context.climb_id == "C-1234567890"
     assert context.onyx_versions_hash == mock_analysis_1.onyx_versions_hash
     assert context.orange_box_version == mock_analysis_1.orange_box_version
 
@@ -216,7 +216,7 @@ def test_orange_box_worker_get_message(
     received_message = orange_box_worker.get_message()
     if received_message:
         assert queue in caplog.text
-        assert "C456DEF" in received_message.body
+        assert "C-2345678901" in received_message.body
     else:
         assert not received_message
 
@@ -228,9 +228,14 @@ def test_validate(orange_box_worker):
 @pytest.mark.parametrize(
     ("exchange", "queue", "error", "msg"),
     [
-        (None, None, True, "check worker config"),
-        ("test_publish_exchange", None, True, "check worker config"),
-        (None, "test_publish_queue_suffix", True, "check worker config"),
+        (None, None, True, "publish_exchange_config_error"),
+        ("test_publish_exchange", None, True, "publish_exchange_config_error"),
+        (
+            None,
+            "test_publish_queue_suffix",
+            True,
+            "publish_exchange_config_error",
+        ),
         ("test_publish_exchange", "test_publish_queue_suffix", False, ""),
     ],
 )
@@ -238,7 +243,7 @@ def test_validate_publish(orange_box_worker, exchange, queue, error, msg):
     orange_box_worker.publish_exchange = exchange
     orange_box_worker.publish_queue_suffix = queue
     if error:
-        with pytest.raises(WorkerStopping) as we:
+        with pytest.raises(ConfigurationError) as we:
             orange_box_worker.validate()
         assert msg in str(we.value)
     else:
@@ -248,7 +253,7 @@ def test_validate_publish(orange_box_worker, exchange, queue, error, msg):
 @pytest.mark.parametrize(
     ("exchange", "queue", "error", "msg"),
     [
-        (None, None, "warn", "messages will NOT be consumed"),
+        (None, None, True, "messages will NOT be consumed"),
         ("test_priority_exchange", None, True, "check worker config"),
         (None, "test_priority_queue_suffix", True, "check worker config"),
         ("test_priority_exchange", "test_priority_queue_suffix", False, ""),
@@ -259,13 +264,13 @@ def test_validate_priority(
 ):
     orange_box_worker.priority_exchange = exchange
     orange_box_worker.priority_queue_suffix = queue
-    if error == "warn":
-        orange_box_worker.validate()
-        assert msg in caplog.text
-    elif error:
-        with pytest.raises(WorkerStopping) as we:
+    raised_msg = "priority_exchange_config_error"
+
+    if error:
+        with pytest.raises(ConfigurationError) as we:
             orange_box_worker.validate()
-        assert msg in str(we.value)
+        assert raised_msg in str(we.value)
+        assert msg in caplog.text
     else:
         orange_box_worker.validate()
 
@@ -273,7 +278,7 @@ def test_validate_priority(
 @pytest.mark.parametrize(
     ("exchange", "queue", "error", "msg"),
     [
-        (None, None, "warn", "messages will NOT be consumed"),
+        (None, None, True, "messages will NOT be consumed"),
         ("test_rerun_exchange", None, True, "check worker config"),
         (None, "test_rerun_queue_suffix", True, "check worker config"),
         ("test_rerun_exchange", "test_rerun_queue_suffix", False, ""),
@@ -284,12 +289,11 @@ def test_validate_rerun(
 ):
     orange_box_worker.rerun_exchange = exchange
     orange_box_worker.rerun_queue_suffix = queue
-    if error == "warn":
-        orange_box_worker.validate()
-        assert msg in caplog.text
-    elif error:
-        with pytest.raises(WorkerStopping) as we:
+    raised_msg = "rerun_exchange_config_error"
+    if error:
+        with pytest.raises(ConfigurationError) as we:
             orange_box_worker.validate()
-        assert msg in str(we.value)
+        assert raised_msg in str(we.value)
+        assert msg in caplog.text
     else:
         orange_box_worker.validate()

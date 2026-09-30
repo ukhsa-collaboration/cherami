@@ -1,10 +1,12 @@
 import logging
+from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from cherami.config import GlobalConfig, PipelineConfig
+from cherami.exceptions import SampleError
 from cherami.pipelines import Pipeline
 from cherami.pipelines.pipeline import (
     PathCharPipeline,
@@ -458,7 +460,7 @@ def test_pipeline_context(mock_analysis_1):
     context = PipelineContext(
         mock_analysis_1.payload, server="server", pipeline_version="1.2.3"
     )
-    assert context.climb_id == "ID-123456"
+    assert context.climb_id == "C-1234567890"
     # The onyx_versions_hash doesn't exist until the attr is assigned
     assert not context.onyx_versions_hash
 
@@ -524,9 +526,10 @@ def test_pathchar_pipeline_build_context(
     target="onyx_analysis_helper.onyx_analysis_helper_functions.OnyxClient.get"
 )
 def test_pathchar_pipeline_build_context_mismatch_hash(
-    mock_onyx, path_char_pipeline, mock_analysis_1
+    mock_onyx, path_char_pipeline, mock_analysis_1, caplog
 ):
     """Test that pathchar build_context exits if hashes don't match."""
+    caplog.set_level("DEBUG")
     mock_onyx.return_value = mock_analysis_1.onyx_record
     mock_analysis_1.payload.update(
         {
@@ -536,7 +539,8 @@ def test_pathchar_pipeline_build_context_mismatch_hash(
     )
     with pytest.raises(RuntimeError) as r:
         path_char_pipeline.build_context(mock_analysis_1.payload)
-    assert "Current onyx state does not match the upstream" in str(r.value)
+    assert "onyx-out-of-sync" in str(r.value)
+    assert "Onyx state out of sync:" in caplog.text
 
 
 @patch(
@@ -549,15 +553,14 @@ def test_pathchar_pipeline_build_context_incomplete_payload(
     caplog.set_level(logging.DEBUG)
     mock_onyx.return_value = mock_analysis_1.onyx_record
     payload = {
-        "climb_id": "C123ABC",
+        "climb_id": "C-1234567890",
         "match_uuid": "JOB123",
         "test": "test",
     }
 
-    with pytest.raises(
-        ValueError, match="not available in the message payload"
-    ):
+    with pytest.raises(SampleError, match="message-payload-error"):
         path_char_pipeline.build_context(payload)
+    assert "not available in the message payload" in caplog.text
 
 
 def test_pathchar_should_run_true(
@@ -660,7 +663,8 @@ def test_pathchar_should_run_tables_missing_onyx_hash(
     """
     sample has analysis record but this has no onyx hash.
     """
-    old_style_analysis_table: dict = mock_analysis_1.analysis_tables.copy()
+
+    old_style_analysis_table: dict = deepcopy(mock_analysis_1.analysis_tables)
 
     old_style_analysis_table["AID-12345678"]["methods"].pop(
         "onyx_versions_hash"
@@ -681,7 +685,7 @@ def test_pathchar_should_run_tables_missing_ob_ersion(
     """
     sample has analysis record but this has ob version.
     """
-    old_style_analysis_table: dict = mock_analysis_1.analysis_tables.copy()
+    old_style_analysis_table: dict = deepcopy(mock_analysis_1.analysis_tables)
 
     old_style_analysis_table["AID-12345678"]["methods"]["versions"] = [
         i
