@@ -5,9 +5,8 @@ class CheramiError(RuntimeError):
     """Base exception."""
 
 
-class WorkerError(CheramiError):
-    """Error in worker; either config or set up, will enter sleep state,
-    cannot continue."""
+class ConfigurationError(CheramiError):
+    """Error in set up somewhere in the worker."""
 
 
 class RetryableError(CheramiError):
@@ -15,8 +14,10 @@ class RetryableError(CheramiError):
     e.g. Onyx connection errors."""
 
 
-class NonRetryableError(CheramiError):  # noqa: N818
-    """Error occurs during handling of a sample."""
+class SampleError(CheramiError):
+    """
+    Error sits within a sample, which can occur in the worker or pipeline.
+    """
 
 
 class RetryablePipelineError(CheramiError):
