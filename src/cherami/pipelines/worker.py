@@ -10,11 +10,12 @@ from typing import Any
 from cherami.audit_db import AuditDB
 from cherami.config import WorkerConfig, hash_from_file
 from cherami.exceptions import (
-    NonRetryableError,
+    CheramiError,
+    ConfigurationError,
     NonRetryablePipelineError,
     RetryableError,
     RetryablePipelineError,
-    WorkerError,
+    SampleError,
 )
 from cherami.pipeline_runner import PipelineRunner
 from cherami.pipelines import Pipeline
@@ -215,10 +216,12 @@ class Worker:
             message: The Varys message object associated with the current
                 sample.
             context: PipelineContext object.
-            reason: Reason for failure. If dead sample queue defined, this gets
-                added to the payload, else informs the error raised. Should be
-                either 'retries_exhausted' or 'non-retryable, anything else
-                raises generic RuntimeError.
+            reason: Reason for failure.
+            error: the error message captured from the exception
+            start_time: start time of sample handling
+            end_time: end time of sampling handling
+            current_attempt: how many times has sample handling been attempted.
+            max_attempts: how many times sample handling can be attempted.
 
         """
         new_payload = context.payload
@@ -228,9 +231,15 @@ class Worker:
         new_payload["failure_type"] = reason
         new_payload["error_message"] = str(error)
         new_payload["max_attempts"] = max_attempts
-        new_payload["attemps"] = current_attempt
+        new_payload["attempts"] = current_attempt
 
-        # Note - both exchange and queue should be set, checked in validate.
+        logger.warning(
+            "Pipeline cannot be retried for sample %s. Sending to dead "
+            "sample queue %s",
+            context.climb_id,
+            self.dead_sample_queue_suffix,
+        )
+
         self._varys_client.send(
             message=context.payload,
             exchange=self.dead_sample_exchange,
@@ -261,29 +270,34 @@ class Worker:
             - The job UUID (match_uuid).
 
         Raises:
-            NonRetryableError: If the message body is invalid JSON or missing
-            required fields.
+            SampleError: If the message body is invalid JSON, missing
+            required fields or the climb ID is not in the correct format.
         """
 
         try:
             payload = json.loads(message.body)
         except json.JSONDecodeError as e:
-            raise ValueError("Invalid JSON in varys message") from e
+            logger.error("Invalid JSON in varys message")
+            raise SampleError("invalid_message") from e
 
         climb_id = payload.get("climb_id")
         job_uuid = payload.get("match_uuid")
 
         # check climb_id integrity
         if not bool(re.fullmatch("C-[A-F0-9]{10}", climb_id)):
-            raise NonRetryableError(
-                "Climb ID %s in message (uuid: %s) is malformed. Cannot "
-                "continue.",
+            logger.error(
+                "Climb ID %s in message (uuid: %s) is malformed. "
+                "Cannot continue.",
                 climb_id,
                 job_uuid,
             )
+            raise SampleError("malformed_id_in_message")
 
+        # check missing info:
         if not climb_id or not job_uuid:
-            raise NonRetryableError("Message missing climb_id or match_uuid.")
+            raise SampleError(
+                "Message missing climb_id or match_uuid: %s.", message
+            )
 
         return payload, climb_id, job_uuid
 
@@ -347,24 +361,24 @@ class Worker:
         Listening exchange AND queue must be set.
 
         Raises:
-            WorkerError - if any checks fail, enter sleep state - do not
+            ConfigurationError - if any checks fail, enter sleep state - do not
             consume messages.
         """
         # Listen exchange and queue cannot be None
         if not self.listen_exchange or not self.listen_queue_suffix:
-            raise WorkerError(
-                "Listen exchange and/or queue suffic has not been set, "
+            logger.error(
+                "Listen exchange and/or queue suffix has not been set, "
                 "cannot consume messages."
             )
+            raise ConfigurationError("listen_exchange_config")
 
         # check if dead-sample exchange set, that is is named suitably
-        if not bool(self.dead_sample_exchange) == bool(
-            self.dead_sample_queue_suffix
-        ):
-            raise WorkerError(
-                "If using dead sample handling, BOTH dead_sample_exchange AND "
-                "dead_sample_queue_suffix have to be configured. Check config."
+        if not self.dead_sample_exchange or not self.dead_sample_queue_suffix:
+            logger.error(
+                "Dead Sample Exchange and dead sample queue suffix have not "
+                "been set, cannot continue."
             )
+            raise ConfigurationError("dead_sample_exchange_config")
 
     def get_message(self) -> Any | None:
         """
@@ -390,12 +404,16 @@ class Worker:
         Runs the worker until it exits.
 
         Raises:
-            RuntimeError: If the worker exits due to a pipeline error or client
-                initialisation failure.
+            ConfigurationError: if any of the configs are not set up correctly.
+            RetryableError: any errors that could be retried such as Onyx
+                queries.
+            SampleError: if there is an issue with a sample; either in the
+                pipeline or the message itself.
+            RuntimeError: If the worker exits due to a client initialisation
+            failure.
             ValueError: If an incoming message cannot be parsed.
             Exception: If an unexpected error occurs and the worker exits.
-            WorkerError: if the validate fails and queues are not set up
-                adequately.
+
         """
         # Start up
         logger.info("Serving worker: %s", self.pipeline.config.name)
@@ -473,9 +491,12 @@ class Worker:
                     )
 
                     # get the upstream onyx context for this sample:
-                    upstream_context: PipelineContext = pipeline.build_context(
-                        payload=payload
-                    )
+                    try:
+                        upstream_context: PipelineContext = (
+                            pipeline.build_context(payload=payload)
+                        )
+                    except ValueError as v:
+                        raise SampleError from v
 
                     # Decision time - run the pipeline?
                     should_run = pipeline.should_run(upstream_context)
@@ -501,10 +522,10 @@ class Worker:
                     current_config_hash = hash_from_file(self._config_path)
                     if current_config_hash != self._startup_config_hash:
                         logger.warning(
-                            "Config file has changed since startup. "
+                            "Pipeline config file has changed since startup. "
                             "Please restart the worker to apply changes.",
                         )
-                        raise WorkerError
+                        raise ConfigurationError("pipeline_config_json")
 
                     total_attempts = pipeline.config.max_attempts
                     current_attempt = self._retry_counts.get(climb_id, 0) + 1
@@ -629,30 +650,18 @@ class Worker:
                         )
 
                         # handle sample failure - send to DLQ or raise
-                        if self.dead_sample_exchange:
-                            logger.warning(
-                                "Pipeline cannot be retried for sample %s. "
-                                "Sending to dead sample queue %s",
-                                climb_id,
-                                self.dead_sample_queue_suffix,
-                            )
-                            self.on_sample_failure(
-                                message=message,
-                                context=upstream_context,
-                                reason="non-retryable pipeline",
-                                error=e,
-                                start_time=start_time,
-                                end_time=end_time,
-                                current_attempt=current_attempt,
-                                max_attempts=total_attempts,
-                            )
-                            continue
-                        else:
-                            logger.warning(
-                                "Pipeline cannot be retried for sample %s.",
-                                climb_id,
-                            )
-                            raise WorkerError from e
+
+                        self.on_sample_failure(
+                            message=message,
+                            context=upstream_context,
+                            reason="non-retryable pipeline",
+                            error=e,
+                            start_time=start_time,
+                            end_time=end_time,
+                            current_attempt=current_attempt,
+                            max_attempts=total_attempts,
+                        )
+                        continue
 
                     # Pipeline completed successfully
                     end_time = datetime.datetime.now(datetime.UTC)
@@ -683,50 +692,41 @@ class Worker:
 
                     # nack message
                     self.on_retry(message)
-                    time.sleep(3600)
+                    time.sleep(10)
                     continue
 
                 # If the message cannot be processed, it is sent to the dead
                 # sample queue:
-                except NonRetryableError as nr:
-                    # if dead sample exchange is set, send sample to that
-                    if self.dead_sample_exchange:
-                        logger.error(
-                            "Worker cannot process sample - sending to dead "
-                            "sample queue %s",
-                            self.dead_sample_queue_suffix,
-                        )
-                        self.on_sample_failure(
-                            message=message,
-                            context=upstream_context,
-                            reason="non-retryable worker",
-                            error=nr,
-                            start_time=start_time,
-                            end_time=end_time,
-                            current_attempt=current_attempt,
-                            max_attempts=total_attempts,
-                        )
-                        continue
-                    else:
-                        logger.error(
-                            "Worker cannot process sample %s", climb_id
-                        )
-                        raise
+                except SampleError as nr:
+                    self.on_sample_failure(
+                        message=message,
+                        context=upstream_context,
+                        reason="non-retryable worker",
+                        error=nr,
+                        start_time=start_time,
+                        end_time=end_time,
+                        current_attempt=current_attempt,
+                        max_attempts=total_attempts,
+                    )
+                    continue
 
-                except WorkerError as w:
+                # If there is a config or set up error, stop the worker
+                except CheramiError as w:
                     # nack message
                     self.on_retry(message)
                     logger.error(
                         "Worker cannot continue to process sample: %s.", w
                     )
-                    logger.warning("Entering sleep state for 1 day.")
-                    time.sleep(86400)  # 1 day
+                    time.sleep(10)
                     raise
                 except Exception as e:
                     logger.exception(
                         "Unhandled exception in worker: %s", str(e)
                     )
+                    time.sleep(10)
                     raise
+
         finally:
+            # We hit this when the worker stops
             logger.info("%s worker stopping", self.pipeline.config.name)
             self._varys_client.close()
