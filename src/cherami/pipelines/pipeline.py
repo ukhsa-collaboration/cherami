@@ -416,6 +416,7 @@ class Pipeline(ABC):
                 "ttlSecondsAfterFinished": 120,
                 "backoffLimit": self.config.backoff_limit,
                 "template": {
+                    "metadata": {"annotations": {"managed_by": "cherami"}},
                     "spec": {
                         "hostname": job_name,
                         "subdomain": self.config.namespace,

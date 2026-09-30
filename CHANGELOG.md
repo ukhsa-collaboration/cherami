@@ -1,6 +1,18 @@
 # Changelog
 
-## unreleased v26.8 "Dutch Beauty"
+## [unreleased]
+## [v26.9]
+
+### Changed:
+- varys version bumped to v1.3.0
+
+### Added:
+- 'managed_by' annotation in job metadata added.
+
+---
+---
+
+## v26.8 "Dutch Beauty"
 
 ## Added:
 * rich_click wraps around click for neatly formatted help. Version CLI arg updated.
@@ -10,7 +22,11 @@
 * Orange box `get_message` method overwritten to consume from priority and rerun queue.
 * Unit tests for the orange box `get_message`.
 * information to the docs to describe changes.
+<<<<<<< HEAD
 * Changelog entry
+=======
+* onyx analysis helper library error log messages added to the cherami log file.
+>>>>>>> release/26-09
 
 ## Changed
 * some fixtures were moved to conftest and called from there for unit tests.

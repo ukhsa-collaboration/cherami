@@ -54,6 +54,11 @@ def init_logging(
     logger.addHandler(handler)
     return logger
 
+    oa_logger = logging.getLogger("onyx_analysis_helper")
+    # Hardcode error-level only messages for external lib.
+    oa_logger.setLevel("ERROR")
+    oa_logger.addHandler(handler)
+
 
 def init_varys(
     config_path: Path,
