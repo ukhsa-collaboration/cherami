@@ -10,9 +10,9 @@ from onyx.exceptions import (
 
 from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
 from cherami.exceptions import (
-    NonRetryableError,
-    NonRetryablePipelineError,
-    RetryablePipelineError,
+    CheramiError,
+    ConfigurationError,
+    RetryableError,
 )
 from cherami.pipelines.pipeline import (
     Pipeline,
@@ -62,7 +62,7 @@ class OrangeBoxPipeline(Pipeline):
         Returns:
             context: PipelineContext object.
         Raises:
-            RuntimeError: if onyx cannot be reached.
+            CheramiError: if onyx cannot be reached.
             ValueError: if any of the required fields are not in the payload.
         """
         context: PipelineContext = super().build_context(payload)
@@ -105,11 +105,11 @@ class OrangeBoxPipeline(Pipeline):
         # If we cannot connect to onyx, try again, maybe it's a blip?
         except OnyxConnectionError as e:
             logger.error("Retryable Onyx connection error: %s.", e)
-            raise RetryablePipelineError from e
+            raise RetryableError from e
         # If we cannot make the request:
         except OnyxRequestError as r:
             logger.error("Nonretryable Onyx Request Error: %s", r)
-            raise NonRetryablePipelineError from r
+            raise CheramiError from r
 
         # If there are no analysis tables, just run:
         if not analysis_tables:
@@ -193,22 +193,25 @@ class OrangeBoxWorker(Worker):
 
         # Publish
         if not self.publish_exchange or not self.publish_queue_suffix:
-            raise NonRetryableError(
+            logger.error(
                 "Orange box worker expects publish exchange and publish "
                 "queue suffix set - check worker config."
             )
+            raise ConfigurationError("publish_exchange_config_error")
 
         # Priority
         if not self.priority_exchange and not self.priority_queue_suffix:
-            logger.warning(
+            logger.error(
                 "Orange Box Priority Message Queue not set, priority "
                 "messages will NOT be consumed."
             )
+            raise ConfigurationError("priority_exchange_config_error")
         if bool(self.priority_exchange) != bool(self.priority_queue_suffix):
-            raise NonRetryableError(
+            logger.error(
                 "For priority queue consumption, both the priority exchange "
                 "AND priority queue suffix must be set, check worker config. "
             )
+            raise ConfigurationError("priority_exchange_config_error")
 
         # Rerun
         if not self.rerun_exchange and not self.rerun_queue_suffix:
@@ -216,11 +219,13 @@ class OrangeBoxWorker(Worker):
                 "Orange Box Rerun Message Queue not set, rerun "
                 "messages will NOT be consumed."
             )
+            raise ConfigurationError("rerun_exchange_config_error")
         if bool(self.rerun_exchange) != bool(self.rerun_queue_suffix):
-            raise NonRetryableError(
+            logger.error(
                 "For rerun queue consumption, both the rerun exchange "
-                "AND rerun queue suffix must be set, check worker config. "
+                "AND rerun queue suffix must be set, check worker config."
             )
+            raise ConfigurationError("rerun_exchange_config_error")
 
     def get_message(self) -> Any | None:
         """
