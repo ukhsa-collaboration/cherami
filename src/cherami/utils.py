@@ -9,6 +9,8 @@ from kubernetes.client.api import BatchV1Api
 from onyx import OnyxConfig, OnyxEnv
 from varys import Varys
 
+from cherami.exceptions import CheramiError, ConfigurationError
+
 
 def init_logging(
     log_path: Path | None,
@@ -140,6 +142,6 @@ def init_onyx() -> OnyxConfig:
             token=os.environ[OnyxEnv.TOKEN],
         )
     except KeyError as e:
-        raise ValueError(f"Missing environment variable: {e}") from e
+        raise ConfigurationError(f"Missing environment variable: {e}") from e
     except Exception as e:
-        raise RuntimeError(f"Failed to initialise Onyx client: {e}") from e
+        raise CheramiError(f"Failed to initialise Onyx client: {e}") from e
