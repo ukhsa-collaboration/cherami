@@ -19,14 +19,22 @@ class MockMessage:
 
 @pytest.fixture
 def message():
-    payload = {"climb_id": "C123ABC", "match_uuid": "JOB123", "test": "test"}
+    payload = {
+        "climb_id": "C-1234567890",
+        "match_uuid": "JOB123",
+        "test": "test",
+    }
     test_message = MockMessage(body=json.dumps(payload))
     return test_message
 
 
 @pytest.fixture
 def message_2():
-    payload = {"climb_id": "C456DEF", "match_uuid": "JOB124", "test": "test2"}
+    payload = {
+        "climb_id": "C-2345678901",
+        "match_uuid": "JOB124",
+        "test": "test2",
+    }
     test_message = MockMessage(body=json.dumps(payload))
     return test_message
 
@@ -108,7 +116,7 @@ class TestContext(PipelineContext):
 @pytest.fixture
 def test_context():
     payload = {
-        "climb_id": "ID-123456",
+        "climb_id": "C-1234567890",
         "match_uuid": "ABC123",
         "test": "test2",
     }
@@ -117,7 +125,7 @@ def test_context():
 
 
 ONYX_RECORD = {
-    "climb_id": "ID-123456",
+    "climb_id": "C-1234567890",
     "site": "test",
     "published_date": "2026-01-01",
     "data": {"datapoint1": 1, "datapoint2": 2, "datapoint3": 3},
@@ -195,14 +203,14 @@ ANALYSIS_TABLE = {
         "Example result 2": "Fail",
         "Example result 3": 0.3,
     },
-    "synthscape_records": ["ID-123456"],
+    "synthscape_records": ["C-1234567890"],
     "identifiers": [],
     "analysis_id": "AID-12345678",
 }
 """Analysis table associated with the analysis record."""
 
 PAYLOAD: dict[str, str] = {
-    "climb_id": "ID-123456",
+    "climb_id": "C-1234567890",
     "match_uuid": "ABC123",
     "test": "test2",
 }
@@ -211,7 +219,7 @@ PAYLOAD: dict[str, str] = {
 @pytest.fixture
 def mock_analysis_1():
     return MockedSample(
-        sample_id="ID-123456",
+        sample_id="C-1234567890",
         analysis_ids=["AID-12345678"],
         onyx_record=ONYX_RECORD,
         onyx_versions_hash=ONYX_HASH,
@@ -238,7 +246,7 @@ def mock_analysis_1():
 def mock_analysis_old_ob():
     """Older version of the orange box"""
     return MockedSample(
-        sample_id="ID-123456",
+        sample_id="C-1234567890",
         analysis_ids=["AID-12345678"],
         onyx_record=ONYX_RECORD,
         onyx_versions_hash=ONYX_HASH,
@@ -296,7 +304,7 @@ def mock_analysis_old_ob():
 
 
 ONYX_RECORD_2 = {
-    "climb_id": "ID-567890",
+    "climb_id": "C-2345678901",
     "site": "test",
     "published_date": "2026-01-01",
     "data": {"datapoint1": 1, "datapoint2": 2, "datapoint3": 3},
@@ -369,7 +377,7 @@ ANALYSIS_TABLE_2 = {
         "Example result 2": "Pass",  # new classifier, now passes!
         "Example result 3": 0.5,
     },
-    "synthscape_records": ["ID-123456"],
+    "synthscape_records": ["C-1234567890"],
     "identifiers": [],
     "analysis_id": "AID-89012345",
 }
@@ -385,7 +393,7 @@ ONYX_HASH_2 = (
 @pytest.fixture
 def mock_multiple_analyses():
     return MockedSample(
-        sample_id="ID-123456",
+        sample_id="C-1234567890",
         analysis_ids=["AID-12345678", "AID-89012345"],
         onyx_record=ONYX_RECORD,
         onyx_versions_hash=ONYX_HASH_2,
@@ -416,10 +424,10 @@ def mock_multiple_analyses():
 @pytest.fixture
 def mock_analysis_empty():
     return MockedSample(
-        sample_id="ID-000000",
+        sample_id="C-0000000000",
         analysis_ids=[],
         onyx_record={
-            "climb_id": "ID-000000",
+            "climb_id": "C-0000000000",
             "site": "test",
             "published_date": "2000-01-01",
             "data": {"datapoint1": 1, "datapoint2": 2, "datapoint3": 3},
@@ -435,13 +443,13 @@ def mock_analysis_empty():
         analysis_tables={},
         orange_box_version="1.2.3",
         payload={
-            "climb_id": "ID-000000",
+            "climb_id": "C-0000000000",
             "match_uuid": "XXX000",
             "test": "test2",
         },
         context=TestContext(
             payload={
-                "climb_id": "ID-000000",
+                "climb_id": "C-0000000000",
                 "match_uuid": "XXX000",
                 "test": "test2",
             },
@@ -456,12 +464,12 @@ def mock_analysis_empty():
 def mock_analysis_2():
     """Analysis tables have old upstream, hash is new"""
     payload = {
-        "climb_id": "ID-567800",
+        "climb_id": "C-2345678901",
         "match_uuid": "456DEF",
         "test": "test2",
     }
     return MockedSample(
-        sample_id="ID-567890",
+        sample_id="C-2345678901",
         analysis_ids=["AID-12345678"],
         onyx_record=ONYX_RECORD_2,
         onyx_versions_hash=ONYX_HASH_2,  # same hash as onyx versions
