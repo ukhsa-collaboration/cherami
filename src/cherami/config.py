@@ -202,9 +202,10 @@ class GlobalConfig:
                 server=raw_config["server"],
             )
         except KeyError as error:
-            raise ValueError(
-                f"Global config missing required field: {error.args[0]}"
-            ) from error
+            logger.error(
+                "Global config missing required field: %s", error.args[0]
+            )
+            raise ConfigurationError("Global_config_error") from error
 
 
 @dataclass(frozen=True)
