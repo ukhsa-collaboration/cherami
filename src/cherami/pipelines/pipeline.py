@@ -1,12 +1,21 @@
 import csv
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+from onyx.exceptions import OnyxConnectionError, OnyxRequestError
+
 from cherami.config import GlobalConfig, PipelineConfig
+from cherami.exceptions import (
+    CheramiError,
+    ConfigurationError,
+    RetryableError,
+    SampleError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,16 +38,14 @@ class PipelineContext:
     should not be stored on the pipeline class.
 
     Attributes:
-            payload (dict[str, Any]):the json payload sent in the message.
-            server (str): server for the onyx database
-            pipeline_version (str): version of the current pipeline.
-            climb_id (str): current sample ID, parsed from payload
-            job_uuid (str): - The job UUID (match_uuid).
+        payload (dict[str, Any]):the json payload sent in the message.
+        server (str): server for the onyx database
+        pipeline_version (str): version of the current pipeline.
+        climb_id (str): current sample ID, parsed from payload
+        job_uuid (str): - The job UUID (match_uuid).
 
-            onyx_versions_hash (str): part of the upstream context,
-                init as None.
-            orange_box_version (str): part of the upstream context,
-                init as None.
+        onyx_versions_hash (str): part of the upstream context, init as None.
+        orange_box_version (str): part of the upstream context, init as None.
     """
 
     def __init__(
@@ -54,7 +61,8 @@ class PipelineContext:
             pipeline_version (str): version of the current pipeline.
 
         Raises:
-            ValueError: If the payload is missing required fields.
+            ValueError: If the payload is missing required fields or climb ID
+                is malformed.
         """
         # shared attributes:
         self.payload: dict[str, Any] = payload
@@ -73,6 +81,9 @@ class PipelineContext:
         except KeyError as k:
             raise ValueError(f"Message missing {k}") from k
 
+        if not bool(re.fullmatch("C-[A-F0-9]{10}", self.climb_id)):
+            raise ValueError("Climb id %s is malformed. Cannot build context.")
+
     def get_upstream_context_hash(self) -> str:
         """
         Query Onyx for the current onyx versions, then calculate and return
@@ -82,26 +93,45 @@ class PipelineContext:
             - string - onyx versions hash.
 
         Raises:
-            - RuntimeError - if onyx cannot be reached.
+            - RetryableWorkerError - if onyx cannot be reached likely
+                only temporarily.
+            - CheramiError - if onyx cannot be reached for other
+                reasons that retry will not help.
         """
         from onyx_analysis_helper import onyx_analysis_helper_functions as oa
 
-        _, current_onyx_versions, exitcode = (
-            oa.get_data_and_versions_from_onyx(
-                sample_id=self.climb_id,
-                server=self.server,
-                fields=["climb_id"],
+        try:
+            _, current_onyx_versions, exitcode = (
+                oa.get_data_and_versions_from_onyx(
+                    sample_id=self.climb_id,
+                    server=self.server,
+                    fields=["climb_id"],
+                    silence=False,
+                )
             )
-        )
+        # If we cannot connect to onyx, try again, maybe it's a blip?
+        except OnyxConnectionError as e:
+            logger.error(
+                "Cannot query Onyx for upstream context. "
+                "Retryable Onyx connection error: %s.",
+                e,
+            )
+            raise RetryableError from e
+        # If we cannot make the request:
+        except OnyxRequestError as r:
+            logger.error(
+                "Cannot query Onyx for upstream context. "
+                "Nonretryable Onyx Request Error: %s",
+                r,
+            )
+            raise CheramiError from r
 
         if exitcode != 0:
             logger.error(
-                "Cannot query Onyx for upstream context, see previous "
-                "logs for reason."
+                "Encountered unhandled error querying Onyx for upstream "
+                "context, will retry."
             )
-            raise RuntimeError(
-                "Onyx cannot be queried for upstream context - check logs."
-            )
+            raise RetryableError
 
         return oa._calculate_versions_hash(current_onyx_versions)
 
@@ -291,7 +321,7 @@ class Pipeline(ABC):
         Returns:
             List of environment variable dictionaries in a format for the pod spec.
         Raises:
-            RuntimeError: If any required environment variables are missing.
+            ConfigurationError: If any required environment variables are missing.
             KeyError: If required paths are missing from `job_dirs`.
         """
         required_env_vars = [
@@ -307,7 +337,7 @@ class Pipeline(ABC):
         ]
         if missing_env_vars:
             missing_vars_display = ", ".join(missing_env_vars)
-            raise RuntimeError(
+            raise ConfigurationError(
                 f"Missing required environment variables: {missing_vars_display}"
             )
 
@@ -342,7 +372,7 @@ class Pipeline(ABC):
             Kubernetes Job manifest dictionary to submit via `create_namespaced_job`.
 
         Raises:
-            RuntimeError: If required environment variables are missing.
+            ConfigurationError: If required environment variables are missing.
             KeyError: If required paths are missing from `job_dirs`.
         """
         job_name = f"{self.config.name}-{job_id}"
@@ -461,8 +491,10 @@ class PathCharPipeline(Pipeline):
         context with the payload, if these do not match, exit.
 
         Raises:
-            RuntimeError: the upstream context cherami sent does not match the
-            current onyx state.
+            RetryableError: If Onyx cannot be reached
+            CheramiError: the upstream context cherami sent does not
+                match the current onyx state, or cannot get orange box version
+                and Onyx Hash from payload.
         """
         # Populate the context object
         context: PipelineContext = super().build_context(payload)
@@ -481,36 +513,15 @@ class PathCharPipeline(Pipeline):
                     context.onyx_versions_hash,
                     payload["onyx_versions_hash"],
                 )
-                raise RuntimeError(
-                    "Current onyx state does not match the upstream "
-                    "context of the cherami state. Cannot proceed."
-                )
+                raise CheramiError("onyx-out-of-sync")
             context.orange_box_version = payload["orange_box_version"]
         except KeyError as k:
-            # Changing this to debug whilst messages on queue do not contain upstream context
-
-            # raise ValueError(
-            #     "%s not available in the message payload, "
-            #     "cannot decipher upstream context.",
-            #     k,
-            # ) from k
             logger.debug(
                 "%s not available in the message payload, "
-                "cannot decipher upstream context. Continuing anyway, might cause "
-                "duplicated records.",
+                "cannot decipher upstream context.",
                 k,
             )
-            # Have to set this to empty to they exist and can be compared in should_run
-            context.orange_box_version = (
-                ""
-                if not context.orange_box_version
-                else context.orange_box_version
-            )
-            context.onyx_versions_hash = (
-                ""
-                if not context.onyx_versions_hash
-                else context.onyx_versions_hash
-            )
+            raise SampleError("message-payload-error") from k
 
         return context
 
@@ -541,7 +552,7 @@ class PathCharPipeline(Pipeline):
             versions hash and the message payload from upstream.
 
         Raises:
-            RuntimeError: Onyx cannot be queried for the analysis tables.
+            RetryableWorkerError: Onyx cannot be queried for the analysis tables.
 
         Returns:
             bool: true or false for should_run.
@@ -569,7 +580,7 @@ class PathCharPipeline(Pipeline):
                 "Cannot query Onyx for analyses for sample %s.",
                 context.climb_id,
             )
-            raise RuntimeError("Cannot query onyx - check logs for reasons.")
+            raise RetryableError("Cannot query onyx - check logs for reasons.")
 
         # 2) Get the analysis tables associated with the pipeline:
         pipeline_analysis_tables = {
@@ -578,10 +589,11 @@ class PathCharPipeline(Pipeline):
             if table["pipeline_name"] == self.config.name
         }
 
-        # If there are no analysis tables, just run:
+        # If there are no analysis tables, Decision is to just run:
         if not pipeline_analysis_tables:
             logger.debug(
-                "Inbound sample %s has no analysis tables for pipeline %s.",
+                "Inbound sample %s has no analysis tables for pipeline %s. "
+                "Decision: run",
                 context.climb_id,
                 self.config.name,
             )
@@ -600,7 +612,8 @@ class PathCharPipeline(Pipeline):
             except KeyError:
                 # If get a table without onyx_versions_hash or
                 # orange_box_version, just ignore and check the next table.
-
+                # If no tables have valid hash or ob version, the
+                # upstream_contexts just remains empty.
                 continue
 
             upstream_contexts.add(

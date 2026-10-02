@@ -9,9 +9,28 @@ from kubernetes.client.api import BatchV1Api
 from onyx import OnyxConfig, OnyxEnv
 from varys import Varys
 
+from cherami.exceptions import CheramiError, ConfigurationError
 
-def init_logging(log_path: Path | None, log_level: str) -> None:
-    logger = logging.getLogger("cherami")
+
+def init_logging(
+    log_path: Path | None,
+    log_level: str,
+    name: str = "cherami",
+    when: str = "midnight",
+) -> logging.Logger:
+    """
+    Initiate logging with given name, log file and rollover time.
+
+    Args:
+        log_path (Path | None): Path to log file
+        log_level (str): Level to log (INFO, WARNING, DEBUG etc)
+        name (str, optional): Name of the logger. Defaults to "cherami".
+        when (str, optional): When the log should rollover. Defaults to
+            "midnight".
+    Returns:
+        logging.Logger object.
+    """
+    logger = logging.getLogger(name)
     logger.setLevel(log_level)
     logger.handlers.clear()
     logger.propagate = False
@@ -20,7 +39,7 @@ def init_logging(log_path: Path | None, log_level: str) -> None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         handler = TimedRotatingFileHandler(
             filename=log_path,
-            when="midnight",
+            when=when,
             utc=True,
         )
     else:
@@ -33,6 +52,7 @@ def init_logging(log_path: Path | None, log_level: str) -> None:
     handler.setFormatter(formatter)
     handler.setLevel(log_level)
     logger.addHandler(handler)
+    return logger
 
     oa_logger = logging.getLogger("onyx_analysis_helper")
     # Hardcode error-level only messages for external lib.
@@ -40,7 +60,12 @@ def init_logging(log_path: Path | None, log_level: str) -> None:
     oa_logger.addHandler(handler)
 
 
-def init_varys(config_path: Path, log_path: Path, profile: str) -> Varys:
+def init_varys(
+    config_path: Path,
+    log_path: Path,
+    profile: str,
+    routing_key: str = "arbitrary_string",
+) -> Varys:
     """Initialise a Varys client for RabbitMQ.
 
     Returns a Varys client configured to use the requested profile from the config file.
@@ -51,6 +76,7 @@ def init_varys(config_path: Path, log_path: Path, profile: str) -> Varys:
         config_path: Path to Varys config containing RabbitMQ credentials and connection details.
         log_path: Path where Varys should write its logs.
         profile: Varys profile name to use from the config file.
+        routing_key: Key to bind queue to exchange (Not used for fanout exchanges).
 
     Returns:
         Configured Varys client ready to send and receive RMQ messages.
@@ -64,6 +90,7 @@ def init_varys(config_path: Path, log_path: Path, profile: str) -> Varys:
             logfile=str(log_path),
             log_level="DEBUG",
             config_path=str(config_path),
+            routing_key=routing_key,
             auto_acknowledge=False,
         )
     except Exception as e:
@@ -90,7 +117,7 @@ def init_kubernetes() -> BatchV1Api:
         c.api_key["authorization"] = token
         c.api_key_prefix["authorization"] = "Bearer"
         c.host = f"https://{os.getenv('KUBERNETES_SERVICE_HOST')}"
-        c.ssl_ca_cert = "/run/secrets/kubernetes.io/serviceaccount/ca.crt"  # type: ignore
+        c.ssl_ca_cert = "/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 
         Configuration.set_default(c)
         api_instance = BatchV1Api()
@@ -120,6 +147,6 @@ def init_onyx() -> OnyxConfig:
             token=os.environ[OnyxEnv.TOKEN],
         )
     except KeyError as e:
-        raise ValueError(f"Missing environment variable: {e}") from e
+        raise ConfigurationError(f"Missing environment variable: {e}") from e
     except Exception as e:
-        raise RuntimeError(f"Failed to initialise Onyx client: {e}") from e
+        raise CheramiError(f"Failed to initialise Onyx client: {e}") from e

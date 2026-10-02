@@ -5,9 +5,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from cherami.config import PipelineConfig, WorkerConfig
+from cherami.config import PipelineConfig
+from cherami.exceptions import ConfigurationError
 from cherami.pipelines.orange_box import OrangeBoxPipeline, OrangeBoxWorker
-from cherami.pipelines.worker import WorkerError
 
 
 @pytest.fixture
@@ -83,7 +83,7 @@ def test_orange_box_build_context(
     """
     mock_onyx.return_value = mock_analysis_1.onyx_record
     context = orange_box_pipeline.build_context(mock_analysis_1.payload)
-    assert context.climb_id == "ID-123456"
+    assert context.climb_id == "C-1234567890"
     assert context.onyx_versions_hash == mock_analysis_1.onyx_versions_hash
     assert context.orange_box_version == mock_analysis_1.orange_box_version
 
@@ -177,29 +177,12 @@ def test_should_run_multiple_analyses_one_match(
         assert "Decision: not run." in caplog.text
 
 
-## Test the worker
 @pytest.fixture
-def orangebox_worker_config():
-    return WorkerConfig(
-        listen_exchange="test_listen_exchange",
-        listen_queue_suffix="test_listen_queue_suffix",
-        publish_queue_suffix="test_publish_queue_suffix",
-        publish_exchange="test_publish_exchange",
-        rerun_queue_suffix="test_rerun_queue_suffix",
-        rerun_exchange="test_rerun_exchange",
-        priority_queue_suffix="test_priority_queue_suffix",
-        priority_exchange="test_priority_exchange",
-        varys_config_path=Path("this/is/a/path"),
-        varys_log_path=Path("this/is/a/path"),
-        config_path=Path("/this/is/a/Path"),
-        config_hash="ABC123",
-    )
-
-
-@pytest.fixture
-def orange_box_worker(orangebox_worker_config, orange_box_pipeline, tmp_path):
+def orange_box_worker(
+    mock_complete_worker_config, orange_box_pipeline, tmp_path
+):
     return OrangeBoxWorker(
-        worker_config=orangebox_worker_config,
+        worker_config=mock_complete_worker_config,
         pipeline=orange_box_pipeline,
         work_dir=tmp_path / "work",
         output_dir=tmp_path / "output",
@@ -217,7 +200,7 @@ def orange_box_worker(orangebox_worker_config, orange_box_pipeline, tmp_path):
     ],
 )
 def test_orange_box_worker_get_message(
-    sideeffect, queue, orange_box_worker, caplog, request, message, message_2
+    sideeffect, queue, orange_box_worker, caplog, request
 ):
     """Tests the four conditions of _get_messsage - message consumption from
     priority, main and rerun queues or none."""
@@ -233,7 +216,7 @@ def test_orange_box_worker_get_message(
     received_message = orange_box_worker.get_message()
     if received_message:
         assert queue in caplog.text
-        assert "C456DEF" in received_message.body
+        assert "C-2345678901" in received_message.body
     else:
         assert not received_message
 
@@ -245,9 +228,14 @@ def test_validate(orange_box_worker):
 @pytest.mark.parametrize(
     ("exchange", "queue", "error", "msg"),
     [
-        (None, None, True, "check worker config"),
-        ("test_publish_exchange", None, True, "check worker config"),
-        (None, "test_publish_queue_suffix", True, "check worker config"),
+        (None, None, True, "publish_exchange_config_error"),
+        ("test_publish_exchange", None, True, "publish_exchange_config_error"),
+        (
+            None,
+            "test_publish_queue_suffix",
+            True,
+            "publish_exchange_config_error",
+        ),
         ("test_publish_exchange", "test_publish_queue_suffix", False, ""),
     ],
 )
@@ -255,7 +243,7 @@ def test_validate_publish(orange_box_worker, exchange, queue, error, msg):
     orange_box_worker.publish_exchange = exchange
     orange_box_worker.publish_queue_suffix = queue
     if error:
-        with pytest.raises(WorkerError) as we:
+        with pytest.raises(ConfigurationError) as we:
             orange_box_worker.validate()
         assert msg in str(we.value)
     else:
@@ -265,7 +253,7 @@ def test_validate_publish(orange_box_worker, exchange, queue, error, msg):
 @pytest.mark.parametrize(
     ("exchange", "queue", "error", "msg"),
     [
-        (None, None, "warn", "messages will NOT be consumed"),
+        (None, None, True, "messages will NOT be consumed"),
         ("test_priority_exchange", None, True, "check worker config"),
         (None, "test_priority_queue_suffix", True, "check worker config"),
         ("test_priority_exchange", "test_priority_queue_suffix", False, ""),
@@ -276,13 +264,13 @@ def test_validate_priority(
 ):
     orange_box_worker.priority_exchange = exchange
     orange_box_worker.priority_queue_suffix = queue
-    if error == "warn":
-        orange_box_worker.validate()
-        assert msg in caplog.text
-    elif error:
-        with pytest.raises(WorkerError) as we:
+    raised_msg = "priority_exchange_config_error"
+
+    if error:
+        with pytest.raises(ConfigurationError) as we:
             orange_box_worker.validate()
-        assert msg in str(we.value)
+        assert raised_msg in str(we.value)
+        assert msg in caplog.text
     else:
         orange_box_worker.validate()
 
@@ -290,7 +278,7 @@ def test_validate_priority(
 @pytest.mark.parametrize(
     ("exchange", "queue", "error", "msg"),
     [
-        (None, None, "warn", "messages will NOT be consumed"),
+        (None, None, True, "messages will NOT be consumed"),
         ("test_rerun_exchange", None, True, "check worker config"),
         (None, "test_rerun_queue_suffix", True, "check worker config"),
         ("test_rerun_exchange", "test_rerun_queue_suffix", False, ""),
@@ -301,12 +289,11 @@ def test_validate_rerun(
 ):
     orange_box_worker.rerun_exchange = exchange
     orange_box_worker.rerun_queue_suffix = queue
-    if error == "warn":
-        orange_box_worker.validate()
-        assert msg in caplog.text
-    elif error:
-        with pytest.raises(WorkerError) as we:
+    raised_msg = "rerun_exchange_config_error"
+    if error:
+        with pytest.raises(ConfigurationError) as we:
             orange_box_worker.validate()
-        assert msg in str(we.value)
+        assert raised_msg in str(we.value)
+        assert msg in caplog.text
     else:
         orange_box_worker.validate()

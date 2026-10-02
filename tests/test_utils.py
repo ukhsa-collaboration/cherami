@@ -2,6 +2,7 @@ import pytest
 from kubernetes.client import Configuration
 from onyx import OnyxConfig
 
+from cherami.exceptions import ConfigurationError
 from cherami.utils import init_kubernetes, init_onyx
 
 
@@ -18,7 +19,9 @@ def test_init_onyx(monkeypatch):
 def test_init_onyx_missing_env(monkeypatch):
     monkeypatch.delenv("ONYX_DOMAIN", raising=False)
     monkeypatch.delenv("ONYX_TOKEN", raising=False)
-    with pytest.raises(ValueError, match="Missing environment variable"):
+    with pytest.raises(
+        ConfigurationError, match="Missing environment variable"
+    ):
         init_onyx()
 
 

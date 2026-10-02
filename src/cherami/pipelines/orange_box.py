@@ -3,13 +3,23 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from onyx.exceptions import (
+    OnyxConnectionError,
+    OnyxRequestError,
+)
+
 from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
+from cherami.exceptions import (
+    CheramiError,
+    ConfigurationError,
+    RetryableError,
+)
 from cherami.pipelines.pipeline import (
     Pipeline,
     PipelineContext,
     get_context_from_record,
 )
-from cherami.pipelines.worker import Worker, WorkerError
+from cherami.pipelines.worker import Worker
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +62,7 @@ class OrangeBoxPipeline(Pipeline):
         Returns:
             context: PipelineContext object.
         Raises:
-            RuntimeError: if onyx cannot be reached.
+            CheramiError: if onyx cannot be reached.
             ValueError: if any of the required fields are not in the payload.
         """
         context: PipelineContext = super().build_context(payload)
@@ -84,19 +94,22 @@ class OrangeBoxPipeline(Pipeline):
 
         analysis_tables: dict[str | None, Any | None]
         exitcode: int
-        analysis_tables, exitcode = oa.get_analysis_records(
-            sample_id=context.climb_id,
-            server=context.server,
-            fields=["methods", "analysis_id"],
-        )
-
-        # If we cannot get to onyx, exit early
-        if exitcode != 0:
-            logger.error(
-                "Cannot query Onyx for analyses for sample %s.",
-                context.climb_id,
+        try:
+            analysis_tables, exitcode = oa.get_analysis_records(
+                sample_id=context.climb_id,
+                server=context.server,
+                fields=["methods", "analysis_id"],
+                silence=False,
             )
-            raise RuntimeError("Cannot query onyx - check logs for reasons.")
+            logger.debug("Querying onyx for sample %s", context.climb_id)
+        # If we cannot connect to onyx, try again, maybe it's a blip?
+        except OnyxConnectionError as e:
+            logger.error("Retryable Onyx connection error: %s.", e)
+            raise RetryableError from e
+        # If we cannot make the request:
+        except OnyxRequestError as r:
+            logger.error("Nonretryable Onyx Request Error: %s", r)
+            raise CheramiError from r
 
         # If there are no analysis tables, just run:
         if not analysis_tables:
@@ -173,29 +186,32 @@ class OrangeBoxWorker(Worker):
         Acts as safety net check rather than user friendly descriptive UI.
 
         Raises:
-            WorkerError - if any required checks fail.
+            WorkerStopping - if any required checks fail.
         """
         # Listen
         super().validate()
 
         # Publish
         if not self.publish_exchange or not self.publish_queue_suffix:
-            raise WorkerError(
+            logger.error(
                 "Orange box worker expects publish exchange and publish "
                 "queue suffix set - check worker config."
             )
+            raise ConfigurationError("publish_exchange_config_error")
 
         # Priority
         if not self.priority_exchange and not self.priority_queue_suffix:
-            logger.warning(
+            logger.error(
                 "Orange Box Priority Message Queue not set, priority "
                 "messages will NOT be consumed."
             )
+            raise ConfigurationError("priority_exchange_config_error")
         if bool(self.priority_exchange) != bool(self.priority_queue_suffix):
-            raise WorkerError(
+            logger.error(
                 "For priority queue consumption, both the priority exchange "
                 "AND priority queue suffix must be set, check worker config. "
             )
+            raise ConfigurationError("priority_exchange_config_error")
 
         # Rerun
         if not self.rerun_exchange and not self.rerun_queue_suffix:
@@ -203,11 +219,13 @@ class OrangeBoxWorker(Worker):
                 "Orange Box Rerun Message Queue not set, rerun "
                 "messages will NOT be consumed."
             )
+            raise ConfigurationError("rerun_exchange_config_error")
         if bool(self.rerun_exchange) != bool(self.rerun_queue_suffix):
-            raise WorkerError(
+            logger.error(
                 "For rerun queue consumption, both the rerun exchange "
-                "AND rerun queue suffix must be set, check worker config. "
+                "AND rerun queue suffix must be set, check worker config."
             )
+            raise ConfigurationError("rerun_exchange_config_error")
 
     def get_message(self) -> Any | None:
         """

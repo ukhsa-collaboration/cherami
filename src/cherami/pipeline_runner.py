@@ -8,18 +8,14 @@ from kubernetes.client.api import BatchV1Api
 from kubernetes.client.exceptions import ApiException
 from onyx.exceptions import OnyxConnectionError
 
+from cherami.exceptions import (
+    NonRetryablePipelineError,
+    RetryablePipelineError,
+)
 from cherami.pipelines import Pipeline
 from cherami.pipelines.pipeline import PipelineContext
 
 logger = logging.getLogger(__name__)
-
-
-class RetryablePipelineError(RuntimeError):
-    """Pipeline error eligible for retry."""
-
-
-class NonRetryablePipelineError(RuntimeError):
-    """Pipeline error not eligible for retry."""
 
 
 class PipelineRunner:
@@ -151,7 +147,7 @@ class PipelineRunner:
                 name=job_name,
                 namespace=pipeline.config.namespace,
             )
-            status = resp.status  # type: ignore
+            status = resp.status
 
             if status and status.succeeded:
                 return True
