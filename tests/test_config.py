@@ -113,9 +113,7 @@ def test_worker_config_success(valid_worker):
     assert config.dead_sample_exchange == "dead_sample_exchange"
 
 
-@pytest.mark.parametrize(
-    "queue", ["publish", "rerun", "priority", "dead_sample"]
-)
+@pytest.mark.parametrize("queue", ["publish", "rerun", "priority"])
 def test_worker_config_allow_none_optionals(valid_worker, queue):
     """Any of publish, rerun or priority queue suffix and exchange can be
     None"""
@@ -132,24 +130,30 @@ def test_worker_config_allow_none_optionals(valid_worker, queue):
     assert config.__dict__[f"{queue}_exchange"] is None
 
 
-@pytest.mark.parametrize("field", ["listen_exchange", "listen_queue_suffix"])
-def test_worker_config_rejects_none(valid_worker, field):
-    valid_worker[field] = None
-    with pytest.raises(
-        ValueError, match=f"Worker config field cannot be null: {field}"
-    ):
+@pytest.mark.parametrize(
+    "fields",
+    [
+        ["listen_exchange"],
+        ["listen_queue_suffix"],
+        ["dead_sample_exchange", "dead_sample_queue_suffix"],
+        ["listen_exchange", "dead_sample_exchange"],
+    ],
+)
+def test_worker_config_rejects_none(valid_worker, fields, caplog):
+    for field in fields:
+        valid_worker[field] = None
+    with pytest.raises(ConfigurationError, match="Worker_config_error"):
         WorkerConfig.from_dict(
             valid_worker,
             Path("/idont/exist/config.json"),
             "hash",
         )
+    assert f"Worker config field(s) cannot be null: {fields}" in caplog.text
 
 
 def test_worker_config_fail(valid_worker):
     del valid_worker["listen_exchange"]
-    with pytest.raises(
-        ValueError, match="Worker config missing required field"
-    ):
+    with pytest.raises(ConfigurationError, match="Worker_config_error"):
         WorkerConfig.from_dict(
             valid_worker,
             Path("/idont/exist/config.json"),
