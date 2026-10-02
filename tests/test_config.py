@@ -77,12 +77,11 @@ def test_global_config_success(valid_global):
     assert config.server == "fancyserver"
 
 
-def test_global_config_fail(valid_global):
+def test_global_config_fail(valid_global, caplog):
     del valid_global["work_dir"]
-    with pytest.raises(
-        ValueError, match="Global config missing required field"
-    ):
+    with pytest.raises(ConfigurationError, match="Global_config_error"):
         GlobalConfig.from_dict(valid_global)
+    assert "Global config missing required field" in caplog.text
 
 
 def test_pipeline_config_success(valid_pipeline):
