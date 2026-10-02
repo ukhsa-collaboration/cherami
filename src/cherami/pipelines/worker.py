@@ -28,10 +28,6 @@ from cherami.utils import (
 logger = logging.getLogger(__name__)
 
 
-class WorkerError(Exception):
-    """Error Occurs in worker."""
-
-
 @dataclass
 class PipelineResult:
     """Result of a pipeline execution attempt."""
