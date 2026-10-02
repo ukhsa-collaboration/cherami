@@ -1,8 +1,13 @@
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Self
+
+from cherami.exceptions import ConfigurationError
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -47,8 +52,12 @@ class PipelineConfig:
                 cpu_limit=int(raw_config["cpu_limit"]),
                 mem_limit=str(raw_config["mem_limit"]),
                 nf_config_path=Path(raw_config["nf_config_path"]),
-                nf_profiles=list(raw_config["nf_profiles"]),
-                nf_extra_args=list(raw_config["nf_extra_args"]),
+                nf_profiles=[raw_config["nf_profiles"]]
+                if isinstance(raw_config["nf_profiles"], str)
+                else list(raw_config["nf_profiles"]),
+                nf_extra_args=[raw_config["nf_extra_args"]]
+                if isinstance(raw_config["nf_extra_args"], str)
+                else list(raw_config["nf_extra_args"]),
                 namespace=str(raw_config["namespace"]),
                 container=str(raw_config["container"]),
                 backoff_limit=int(raw_config["backoff_limit"]),
@@ -56,12 +65,30 @@ class PipelineConfig:
                 retry_timeout=int(raw_config["retry_timeout"]),
                 job_timeout=int(raw_config["job_timeout"]),
             )
-        except KeyError as error:
-            raise ValueError(
-                f"Pipeline missing required field: {error.args[0]}"
-            ) from error
+        except KeyError as ke:
+            logger.error(
+                "Pipeline config missing required field: %s", ke.args[0]
+            )
+            raise ConfigurationError("Pipeline_config_error") from ke
+        except TypeError as te:
+            logger.error("Pipeline config requires path for nf_config_path.")
+            raise ConfigurationError("Pipeline_config_error") from te
         if pipeline.max_attempts < 1:
-            raise ValueError("max_attempts must be at least 1")
+            logger.error(
+                "Pipeline config requires max_attempts must be at least 1"
+            )
+            raise ConfigurationError("Pipeline_config_error")
+        if not pipeline.nf_config_path.is_file():
+            logger.error(
+                "Nextflow configuration path provided in pipeline config "
+                "does not exist."
+            )
+            raise ConfigurationError("Pipeline_config_error")
+        if not pipeline.version.startswith("n"):
+            logger.warning(
+                "Pipeline version supplied in pipeline config "
+                "does not start with 'v'."
+            )
         return pipeline
 
 
