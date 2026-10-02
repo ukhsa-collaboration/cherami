@@ -124,11 +124,21 @@ class WorkerConfig:
             ValueError: If a required field is missing or contains invalid value.
         """
         try:
-            for field in ("listen_exchange", "listen_queue_suffix"):
+            missing_fields = []
+            for field in (
+                "listen_exchange",
+                "listen_queue_suffix",
+                "dead_sample_exchange",
+                "dead_sample_queue_suffix",
+            ):
                 if raw_config[field] is None:
-                    raise ValueError(
-                        f"Worker config field cannot be null: {field}"
-                    )
+                    missing_fields.append(field)
+            if missing_fields:
+                logger.error(
+                    "Worker config field(s) cannot be null: %s", missing_fields
+                )
+                raise ConfigurationError("Worker_config_error")
+
             return cls(
                 listen_exchange=str(raw_config["listen_exchange"]),
                 listen_queue_suffix=str(raw_config["listen_queue_suffix"]),
@@ -164,9 +174,10 @@ class WorkerConfig:
                 config_hash=config_hash,
             )
         except KeyError as error:
-            raise ValueError(
-                f"Worker config missing required field: {error.args[0]}"
-            ) from error
+            logger.error(
+                "Worker config missing required field: %s", error.args[0]
+            )
+            raise ConfigurationError("Worker_config_error") from error
 
 
 @dataclass(frozen=True)
