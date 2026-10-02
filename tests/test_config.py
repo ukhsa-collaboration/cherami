@@ -10,6 +10,7 @@ from cherami.config import (
     WorkerConfig,
     load_config,
 )
+from cherami.exceptions import ConfigurationError
 
 
 @pytest.fixture
@@ -21,8 +22,15 @@ def valid_global():
     }
 
 
+@pytest.fixture(scope="session")
+def config_file_path(tmp_path_factory):
+    tmp_file_path = tmp_path_factory.mktemp("config_files") / "tmp_config.json"
+    tmp_file_path.write_text("")
+    return tmp_file_path
+
+
 @pytest.fixture
-def valid_pipeline():
+def valid_pipeline(config_file_path):
     return {
         "name": "test-pipeline",
         "version": "1.0.0",
@@ -31,7 +39,7 @@ def valid_pipeline():
         "mem": "4G",
         "cpu_limit": 4,
         "mem_limit": "8G",
-        "nf_config_path": "/idont/exist/nf.config",
+        "nf_config_path": str(config_file_path),
         "nf_profiles": ["docker", "test"],
         "nf_extra_args": ["--blah"],
         "namespace": "imafake-ns",
@@ -83,13 +91,13 @@ def test_pipeline_config_success(valid_pipeline):
     assert config.name == "test-pipeline"
     assert config.cpus == 2
     assert config.nf_profiles == ["docker", "test"]
-    assert config.nf_config_path == Path("/idont/exist/nf.config")
 
 
-def test_pipeline_config_fail(valid_pipeline):
+def test_pipeline_config_fail(valid_pipeline, caplog):
     del valid_pipeline["name"]
-    with pytest.raises(ValueError, match="Pipeline missing required field"):
+    with pytest.raises(ConfigurationError, match="Pipeline_config_error"):
         PipelineConfig.from_dict(valid_pipeline)
+    assert "Pipeline config missing required field" in caplog.text
 
 
 def test_worker_config_success(valid_worker):
@@ -206,7 +214,7 @@ def test_load_config_invalid_json(tmp_path):
 
 @pytest.mark.parametrize("value", [0, -1])
 def test_load_config_maxattempts_wrong_value(
-    tmp_path, valid_global, valid_pipeline, valid_worker, mocker, value
+    tmp_path, valid_global, valid_pipeline, valid_worker, mocker, value, caplog
 ):
     mocker.patch("cherami.pipelines.load_pipeline_module")
     valid_pipeline["max_attempts"] = value
@@ -219,5 +227,23 @@ def test_load_config_maxattempts_wrong_value(
     with config_file.open("w") as f:
         json.dump(config_data, f)
 
-    with pytest.raises(ValueError, match="max_attempts must be at least 1"):
+    with pytest.raises(ConfigurationError, match="Pipeline_config_error"):
         load_config(config_file)
+    assert "max_attempts must be at least 1" in caplog.text
+
+
+def test_load_pipeline_empty_nf_config_path(valid_pipeline, caplog):
+    broken_pipeline_config = valid_pipeline.copy()
+    broken_pipeline_config["nf_config_path"] = None
+    with pytest.raises(ConfigurationError, match="Pipeline_config_error"):
+        PipelineConfig.from_dict(broken_pipeline_config)
+    assert "Pipeline config requires path for nf_config_path" in caplog.text
+
+
+@pytest.mark.parametrize("key", ["nf_extra_args", "nf_profiles"])
+def test_load_pipeline_nf_extra_args_not_list(valid_pipeline, key):
+    broken_pipeline_config = valid_pipeline.copy()
+    broken_pipeline_config[key] = "blah"
+
+    c: PipelineConfig = PipelineConfig.from_dict(broken_pipeline_config)
+    assert isinstance(getattr(c, key), list)
