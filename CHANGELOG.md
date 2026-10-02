@@ -7,6 +7,7 @@
 - varys version bumped to v1.3.0
 - unit tests to check for implemented exceptions.
 - init_logger function can take a logger name and interval as args, but defaults to 'cherami' and 'midnight' to keep functionality for main cherami logging.
+- config unit tests.
 
 ### Added:
 - 'managed_by' annotation in job metadata added.
@@ -17,6 +18,11 @@
   - SampleError - sends to dead sample queue.
   - CheramiError - stops the worker (other reason than config error).
 - climb-id validation when handling messages.
+- config checks:
+  - nf args and nf profiles checked for strings and cast to list correctly
+  - updated exceptions raised to be ConfigurationError
+  - check nf config path is not None and is a file that exists.
+  - dead sample exchange and queue prefix are required universally.
 
 ---
 ---
