@@ -362,6 +362,7 @@ class Pipeline(ABC):
             nextflow_cmd.extend(["-r", str(self.config.version)])
         if self.config.nf_extra_args:
             nextflow_cmd.extend(self.config.nf_extra_args)
+        nextflow_cmd.extend(["--server", self.global_config.server])
         nextflow_cmd.extend(["--outdir", str(job_dirs["output_dir"])])
         if job_dirs.get("samplesheet_path"):
             nextflow_cmd.extend(

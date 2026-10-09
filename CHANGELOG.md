@@ -1,15 +1,20 @@
 # Changelog
 
-## [unreleased]
-## [v26.9]
-
-### Changed:
-- varys version bumped to v1.3.0.
-- audit db unit test temp path.
+## [Unreleased]
+## v26.9
 
 ### Added:
 - 'managed_by' annotation in job metadata added.
+- 'server' param to nextflow command built in cherami
+- documentation for 'server' param.
 - directory creation with pathlib for audit_db path if it don't exist.
+
+### Changed
+- varys version bumped to v1.3.0
+- unit test for pipeline manifest.
+- audit db unit test temp path.
+
+
 
 ---
 ---
