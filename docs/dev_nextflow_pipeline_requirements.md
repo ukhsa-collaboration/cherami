@@ -38,7 +38,7 @@ Cherami validates pipeline success using the Nextflow trace file. To enable this
 
 #### Exit codes and success criteria
 
-From Cheramis perspective a run is considered successful when:
+From Cherami's perspective a run is considered successful when:
 - The Kubernetes job completes without exhausting retries or hitting a timeout.
 - The trace file exists at `<output_dir>/pipeline_trace.txt`.
 - All relevant processes in the trace file have an allowed exit code:
