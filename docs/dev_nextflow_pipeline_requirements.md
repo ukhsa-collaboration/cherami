@@ -18,7 +18,7 @@ nextflow run <path> -c <config.nf_config_path> -profile <config.nf_profiles> -r 
 
 Cherami always expects a pipeline to accept inputs via a samplesheet flag (`--samplesheet`). The samplesheet should contain all inputs the pipeline needs to run, with a documented example. The samplesheet is created in the cherami worker and saved to a file made available to the pipeline.
 
-If your pipeline will be kicked off based on some information that Cherami has that your pipeline the needs, this can be included in the samplesheet, and parsed out in your Nextflow pipeline. For example, if your pipeline checks whether to run based on some Orange Box outputs, the version of the Orange Box needs to be included in the samplesheet.
+If your pipeline will be kicked off based on some information that Cherami has that your pipeline needs, this can be included in the samplesheet, and parsed out in your Nextflow pipeline. For example, if your pipeline checks whether to run based on some Orange Box outputs, the version of the Orange Box needs to be included in the samplesheet.
 
 ### Accept a `--outdir` parameter
 
