@@ -65,7 +65,7 @@ def test_create_job_manifest(pipeline, pipeline_config, job_dirs, monkeypatch):
     command = container["args"][2]
     expected_command = (
         f"nextflow run main.nf -c {Path('/idont/exist/nf.config')} "
-        f"-profile docker,test -r 1.0.0 --blah "
+        f"-profile docker,test -r 1.0.0 --blah --server server "
         f"--outdir {Path('/idont/exist/output')} --samplesheet "
         f"{Path('/idont/exist/samplesheet.csv')}"
     )

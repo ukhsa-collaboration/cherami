@@ -1,13 +1,19 @@
 # Changelog
 
-## [unreleased]
-## [v26.9]
+## [Unreleased]
 
-### Changed:
-- varys version bumped to v1.3.0
+## [v26.9]
 
 ### Added:
 - 'managed_by' annotation in job metadata added.
+- 'server' param to nextflow command built in cherami
+- documentation for 'server' param.
+
+### Changed
+- varys version bumped to v1.3.0
+- unit test for pipeline manifest.
+
+
 
 ---
 ---
