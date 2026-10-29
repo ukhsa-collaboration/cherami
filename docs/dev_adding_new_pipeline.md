@@ -26,7 +26,7 @@ Create a new configuration file in `configs/` (e.g., `configs/cherami_my_pipelin
 * **Pipeline Name**: Must be hyphenated (e.g., `my-pipeline`) because it is used to generate Kubernetes job names which can NOT contain underscores.
 * **version**: Use this to specify Git branch, tag, or commit. Nextflow will then pull that codebase.
 * **Module Name**: Can be underscored (e.g., `my_pipeline.py`).
-
+* For the nextflow config argument, add the cherami nextflow config (check for the path from another config).
 ### Minimal Structure
 
 ```json
@@ -44,7 +44,7 @@ Create a new configuration file in `configs/` (e.g., `configs/cherami_my_pipelin
     "mem": "8G",
     "cpu_limit": 4,
     "mem_limit": "8G",
-    "nf_config_path": "my-pipeline-repo/nextflow.config",
+    "nf_config_path": "/path/to/cherami/nextflow.config",
     "nf_profiles": [],
     "nf_extra_args": [],
     "namespace": "ns-synthscape-ukhsa",
