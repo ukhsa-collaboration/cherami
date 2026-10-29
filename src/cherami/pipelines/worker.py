@@ -684,8 +684,7 @@ class Worker:
                 except RetryableError as r:
                     # Write error to log
                     logger.error(
-                        "Sample %s could not be processed - %s, retrying "
-                        "in 1hr.",
+                        "Sample %s could not be processed - %s, retrying ",
                         climb_id,
                         str(r),
                     )
