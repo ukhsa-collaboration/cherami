@@ -56,7 +56,7 @@ class StrepPneumoPipeline(PathCharPipeline):
         with OnyxClient(onyx_config()) as client:
             for sample_id in samples:
                 sample_record = client.get(
-                    project="synthscape",
+                    project=context.server,
                     climb_id=sample_id,
                     include=[
                         "human_filtered_reads_1",
