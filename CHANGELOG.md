@@ -1,5 +1,12 @@
 # Changelog
 
+v26.8.1 - Hotfix for Strep pipeline 
+## Fixed: 
+- `generate_samplesheet` method in strep pipeline had hardcoded server. Replaced with `context.server` attribute.
+
+---
+---
+
 ## v26.8 "Dutch Beauty"
 
 ## Added:

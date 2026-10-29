@@ -1,6 +1,6 @@
 [project]
 name = "cherami"
-version = "26.8.0"
+version = "26.8.1"
 description = "Cherami - *SCAPE sample orchestration."
 readme = "README.md"
 authors = [
