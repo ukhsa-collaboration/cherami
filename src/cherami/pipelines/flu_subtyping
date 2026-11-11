@@ -1,0 +1,268 @@
+import csv
+import logging
+from functools import cache
+from pathlib import Path
+import pandas as pd
+import os
+
+from onyx import OnyxClient, OnyxConfig
+
+from cherami.config import CheramiConfig, GlobalConfig, PipelineConfig
+from cherami.pipelines.pipeline import (
+    PathCharPipeline,
+    PipelineContext,
+    get_context_from_record,
+)
+from cherami.pipelines.worker import Worker
+from cherami.utils import init_onyx
+
+logger = logging.getLogger(__name__)
+
+
+@cache
+def onyx_config() -> OnyxConfig:
+    return init_onyx()
+
+
+class FluSubPipeline(PathCharPipeline):
+    @property
+    def proc_names(self) -> dict[str, list[int]]:
+        """Optional mapping of Nextflow process names to their allowed exit codes.
+
+        Returns:
+            Process-specific allowed exit codes used when evaluating trace files. When
+            empty, every process must exit with code 0.
+        """
+       # return {
+       #     # Placeholders - add additional allowed exit codes/behaviour when implemented
+       #     "run_kractor": [0],
+       #     "run_pneumokity": [0],
+       #     "add_pneumokity_results_onyx": [0],
+       # }
+
+    def generate_samplesheet(
+        self,
+        samples: list[str],
+        job_id: str,
+        output_filepath: Path,
+        context: PipelineContext,
+    ) -> None:
+        """
+        Custom samplesheet constructor. Includes the orange box version from
+        the context object.
+
+        Raises:
+            ValueError - if climb id not found in onyx.
+        """
+        rows = []
+        with OnyxClient(onyx_config()) as client:
+            for sample_id in samples:
+                sample_record = client.get(
+                    project=context.server,
+                    climb_id=sample_id,
+                    include=[
+                        "human_filtered_reads_1",
+                        "human_filtered_reads_2",
+                        "taxon_reports",
+                    ],
+                )
+            if not sample_record:
+                raise ValueError("No records found for sample %s.", sample_id)
+
+            try:
+
+                row = {
+                    "climb_id": sample_id,
+                    "fastq_1": sample_record["human_filtered_reads_1"],
+                    "fastq_2": sample_record["human_filtered_reads_2"],
+                    "kraken_output": f"{sample_record['taxon_reports']}{sample_id}_PlusPF.kraken_assignments.tsv",
+                    "kraken_report": f"{sample_record['taxon_reports']}{sample_id}_PlusPF.kraken_report.txt",
+                    "orange_box_version": context.orange_box_version,
+                }
+            except KeyError as e:
+                raise ValueError(f"Missing expected field: {e.args[0]}") from e
+            rows.append(row)
+
+        if not rows:
+            raise ValueError(
+                "Samplesheet generator found no records for sample."
+            )
+
+        fieldnames = list(rows[0].keys())
+        with output_filepath.open("w") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        logger.debug(
+            "Generated flu subtyping samplesheet at %s",
+            output_filepath,
+        )
+        
+       
+    def get_metadata_by_climb_id(self,
+        climb_id_list: list[str],
+        job_id: str,
+        output_filepath: Path,
+        context: PipelineContext,
+    ) -> None:
+        """
+        Custom metadata constructor. 
+
+        Raises:
+            ValueError - if climb id not found in onyx.
+        """
+
+        rows = []
+        fields = [
+            "site",
+            "sequence_purpose",
+            "input_type",
+            "sample_source",
+            "taxon_reports",
+            "classifier_calls"
+        ]
+
+        with OnyxClient(onyx_config()) as client:
+            for climb_id in climb_id_list:
+                record = client.get(
+                    project=context.server,
+                    climb_id=climb_id,
+                    include=fields,
+                )
+
+                if not record:
+                    raise ValueError(f"No record found for sample {climb_id}.")
+
+                try:
+                    class_calls = pd.DataFrame(record["classifier_calls"])
+                    try:    
+                        unclass = class_calls.loc[class_calls['human_readable'] == 'unclassified', 'count_descendants'].item()
+                    except:
+                        unclass = 0
+                    try:
+                        root = class_calls.loc[class_calls['human_readable'] == 'root', 'count_descendants'].item()
+                    except:
+                        root = 0
+                    total_reads = unclass + root
+
+                    try:
+                        sp_reads = class_calls.loc[class_calls['human_readable'] == "Alphainfluenzavirus", 'count_descendants'].item()
+                        sp_percen = class_calls.loc[class_calls['human_readable'] == "Alphainfluenzavirus", 'percentage'].item()
+                        species_dict = {'climb_id': climb_id,'Total_reads': total_reads, f'Kraken_Alphainfluenzavirus_reads': sp_reads, 
+                        f'Percentage_Alphainfluenzavirus_reads': sp_percen}
+                    except:
+                         species_dict = {'climb_id': climb_id,'Total_reads': total_reads, f'Kraken_Alphainfluenzavirus_reads': 0, 
+                         f'Percentage_Alphainfluenzavirus_reads': 0}
+                   
+                    meta_dict = {
+                                "climb_id": climb_id,
+                                "site": record["site"],
+                                "sequence_purpose": record["sequence_purpose"],
+                                "input_type": record["input_type"],
+                                "sample_source": record["sample_source"],
+                                "kraken_report": os.path.join(
+                                    record["taxon_reports"],
+                                    f"{climb_id}_PlusPF.kraken_report.json",
+                                ),
+                            }
+                    d3 = meta_dict | species_dict    
+                    rows.append(d3)
+                            
+                except KeyError as e:
+                    raise ValueError(f"Missing expected field: {e.args[0]}") from e
+
+        if not rows:
+            raise ValueError(
+                "Samplesheet generator found no records for sample."
+            )
+
+        fieldnames = list(rows[0].keys())
+        with output_filepath.open("w") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        logger.debug(
+            "Generated flu subtyping metadata at %s",
+            output_filepath,
+        )
+        
+
+        
+    def should_run(self, context: PipelineContext) -> bool:
+        """Determine whether the flu subtyping pipeline should run for the given
+        sample.
+        Query the kraken classifier outputs and determine if Alphainfluenzavirus 
+        is present. When this returns False, the worker calls `on_skip()`
+         instead of launching the pipeline.
+
+        Arguments:
+            context: PipleineContext object that contains key information like
+            sample id and server.
+
+        Returns:
+            `True` when the pipeline should run, otherwise `False`."""
+        if not super().should_run(context):
+            return False
+
+        influenza_species = {
+            "Alphainfluenzavirus",
+        }
+
+        with OnyxClient(onyx_config()) as client:
+            record = client.get(
+                project=context.server,
+                climb_id=context.climb_id,
+                include=["classifier_calls"],
+            )
+
+        if not record:
+            logger.debug(
+                "No Onyx record found for sample %s. Decision: not run",
+                context.climb_id,
+            )
+            return False
+
+        classifier_calls = record.get("classifier_calls", [])
+        for call in classifier_calls:
+            if (
+                call.get("human_readable") in influenza_species
+                and int(call.get("count_descendants", 0)) >= 1
+            ):
+                logger.debug(
+                    "Sample %s has at least one Kraken read for %s. Decision: run",
+                    context.climb_id,
+                    call["human_readable"],
+                )
+                return True
+
+        logger.debug(
+            "Sample %s has no Kraken reads for Alpha or Beta influenza. "
+            "Decision: not run",
+            context.climb_id,
+        )
+        return False
+
+def build_worker(
+    config: CheramiConfig,
+    work_dir: Path,
+    output_dir: Path,
+    audit_db_path: Path,
+) -> Worker:
+    pipeline: PathCharPipeline = build_pipeline(
+        config.pipeline_config, config.global_config
+    )
+    return Worker(
+        config.worker_config,
+        pipeline,
+        work_dir,
+        output_dir,
+        audit_db_path=audit_db_path,
+    )
+
+
+def build_pipeline(
+    pipeline_config: PipelineConfig, global_config: GlobalConfig
+) -> PathCharPipeline:
+    return FluSubPipeline(pipeline_config, global_config)
