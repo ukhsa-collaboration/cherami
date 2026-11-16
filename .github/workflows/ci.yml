@@ -1,7 +1,7 @@
 name: Tests
 on:
   push:
-    branches: [ main, release/** ]
+    branches: [ main, "pre-release/**" ]
   pull_request:
   workflow_dispatch:
 
