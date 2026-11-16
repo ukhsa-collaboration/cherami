@@ -3,7 +3,7 @@ name: Docker
 on:
   push:
     branches:
-      - "pre-release/**"
+      - "release/**"
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
