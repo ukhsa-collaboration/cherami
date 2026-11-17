@@ -2,6 +2,8 @@
 
 This guide details the end-to-end process of adding a new characterisation pipeline to Cherami. This involves creating a configuration file, implementing a `Pipeline` class, and determining the appropriate `Worker` strategy.
 
+When adding a new pipeline to Cherami, first create a branch called `feat/<pipeline-name>` with your pipeline name, using dashes for spaces. 
+
 ## 1. Overview
 
 Cherami manages characterisation pipelines using two key components:
@@ -20,54 +22,12 @@ A single JSON configuration file specifies most of the config options, defining 
 
 ## 2. Configuration
 
-Create a new configuration file in `configs/` (e.g., `configs/cherami_my_pipeline.json`). Use existing configs like `configs/cherami_amr.json` as a templates.
+Create a new configuration file in `configs/`. you may wish to use existing configs in the dev environment as a template. 
 
 ### Naming Conventions
 * **Pipeline Name**: Must be hyphenated (e.g., `my-pipeline`) because it is used to generate Kubernetes job names which can NOT contain underscores.
 * **version**: Use this to specify Git branch, tag, or commit. Nextflow will then pull that codebase.
 * **Module Name**: Can be underscored (e.g., `my_pipeline.py`).
-
-### Minimal Structure
-
-```json
-{
-  "global": {
-    "work_dir": "/path/to/work/dir",
-    "output_dir": "/path/to/output/dir",
-    "server": "synthscape"
-  },
-  "pipeline": {
-    "name": "my-pipeline",
-    "version": "0.1.0",
-    "path": "github link to pipeline",
-    "cpus": 4,
-    "mem": "8G",
-    "cpu_limit": 4,
-    "mem_limit": "8G",
-    "nf_config_path": "my-pipeline-repo/nextflow.config",
-    "nf_profiles": [],
-    "nf_extra_args": [],
-    "namespace": "ns-synthscape-ukhsa",
-    "container": "quay.io/climb-tre/nextflow",
-    "backoff_limit": 0,
-    "max_attempts": 2,
-    "retry_timeout": 10,
-    "job_timeout": 3600
-  },
-  "worker": {
-    "listen_exchange": "cherami_test",
-    "listen_queue_suffix": "my_pipeline_queue",
-    "publish_queue_suffix": null,
-    "publish_exchange": null,
-    "rerun_queue_suffix": null,
-    "rerun_exchange": null,
-    "priority_queue_suffix": null,
-    "priority_exchange": null,
-    "varys_config_path": "./conf/varys.cfg",
-    "varys_log_path": "./my_pipeline_varys.log"
-  }
-}
-```
 
 *See `docs/dev_config.md` for more detailed field documentation.*
 
@@ -202,27 +162,15 @@ Return your new subclass from `build_worker` in your pipeline module.
 
 ## 6. Running and Verifying
 
-Use the CLI to verify your configuration and logic.
+Once you are happy that your pipeline can be run and the cherami parts have been created as above,
+the best way to test it is to create a deployment in the dev environment. 
 
-**Start the worker:**
-```bash
-uv run cherami serve path/to/config.json
-```
+Firstly, you will need to manually create an image from your branch. This is best done through the GitHub 
+gui in a web browser. Open up the Cherami repo, click 'Actions' tab, then 'Docker' from the list on the left, and the 
+green 'Run workflow' button in the top corner. From the dropdown, select the branch you wish to create your branch from. 
 
-**Inspect queues:**
-```bash
-uv run cherami describe path/to/config.json
-```
+The actions will then run, and on success, you should see your image built in the 'cherami-dev'. To use the image, in the 
+cherami deployment yaml, replace the PACKAGE and IMAGE variable as described in 
+[Kubernetes Deployment of Cherami](dev_k8_deployment_of_cherami.md). If you have not yet done so, follow these insructions 
+to create the deployment configuration yaml. You can then deploy your worker as per these instructions. 
 
-**Dry-run decision logic:**
-Evaluates `should_run()` for specific samples without spawning full jobs.
-```bash
-uv run cherami evaluate --orange_box_version <orange_box_version> path/to/config.json SAMPLE_1 SAMPLE_2
-```
-If you wish to see the logs that explains the decision logic, use:
-```
-uv run cherami --log_level debug evaluate --orange_box_version <orange_box_version> path/to/config.json SAMPLE_1 SAMPLE_2
-```
-You can provide an orange box version to test whether the current deployment would cause the sample
-to be run, or you can use 'None' or '' which will ignore the orange box version (note that this might
-lead to evaluate returning 'True' but the deployment might return 'False')

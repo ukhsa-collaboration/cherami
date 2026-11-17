@@ -1,5 +1,15 @@
 # Changelog
 
+v26.8.2 - Security update 
+- updated various python dependencies including certifi, virtualenv, urllib3.
+- specified python version to >=3.12.16
+- updated onyx analysis helper to v0.6.7
+- updated varys-client to v1.3.0
+- updated UV image in dockerfile. 
+
+---
+---
+
 v26.8.1 - Hotfix for Strep pipeline 
 ## Fixed: 
 - `generate_samplesheet` method in strep pipeline had hardcoded server. Replaced with `context.server` attribute.
