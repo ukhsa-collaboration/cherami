@@ -35,7 +35,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: |     
+            name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}, enable=${{ github.ref_type == 'tag'}}    
+            name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-dev, enable=${{ github.ref_type == 'branch'}}
           tags: |
             type=ref,event=branch
             type=ref,event=tag
