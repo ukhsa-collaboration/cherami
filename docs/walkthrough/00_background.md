@@ -38,3 +38,20 @@ pip install --group dev
 pre-commit install
 pytest
 ```
+
+## Development environment
+
+This guide assumes you are starting with a working Nextflow pipeline. You will first add your pipeline to Cherami and test it in devscape, then promote it to production in step 07.
+
+### Test and production
+
+| Environment | Onyx server | Used for |
+| --- | --- | --- |
+| Test | `devscape` | Developing and testing your pipeline in Cherami. Steps 02 to 06 use devscape. |
+| Production | `mscape` | Step 07 onwards covers adding your pipeline to production. |
+
+Test and production each have their own Cherami config, Kubernetes namespace and RabbitMQ exchanges. Start in devscape, and only promote your pipeline once it runs correctly there.
+
+### Worked examples
+
+Each step ends with an Example section that follows `my-cool-pipeline` through the walkthrough. Follow the example alongside your own pipeline.
