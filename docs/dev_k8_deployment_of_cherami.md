@@ -1,30 +1,27 @@
 # Kubernetes Deployment of Cherami
 
-This guide details the process of deploying a configured Cherami characterisation pipeline to a Kubernetes cluster. This involves creating a deployment spec configuring the Cherami instance to run the Pipeline/Worker as a long lived kubernetes deployment.
+This guide details the process of deploying a configured Cherami characterisation pipeline to a Kubernetes cluster. 
+This involves creating a deployment spec configuring the Cherami instance to run the Pipeline/Worker as a long lived kubernetes deployment.
 
 ## 1. Overview
 
 Assuming you have followed the steps to createa new pipeline, deploying a Cherami worker involves:
 1. **Creating the deployment spec**: A YAML specification for the deployment, configuring env vars, file mounts etc.
-2. **Configuring API keys**: API keys will need to be added to the deployment
+2. **Deployment with a test image**: the test image is added to the deployment and deployed in the test environment. 
 
 ## 2. A note on API Keys
 
-Characterisation pipelines likely will require access to external services like S3/Onyx. You must ensure the following environment variables are populated with valid keys.
+Characterisation pipelines likely will require access to external services like S3/Onyx. The dev environment should have the required 
+AWS and Onyx credentials in K8 Secrets. 
 
-### Required Variables
-* `AWS_ACCESS_KEY_ID`: S3 Access Key.
-* `AWS_SECRET_ACCESS_KEY`: S3 Secret Key.
-* `ONYX_DOMAIN`: Onyx domain
-* `ONYX_TOKEN`: Token the Onyx API.
-
-In the deployment spec below, these are left empty. Currently we dont use kubernetes secrets and so should be added manually.
-
-It is important these API keys are NOT committed to version control.
+It is important that any API keys or credentials are NOT committed to version control.
 
 ## 3. Deployment specification
 
-Create a deployment file (e.g., `my-pipeline-deployment.yaml`). The following example demonstrates a deployment for the AMR pipeline.
+Create a deployment file (e.g., `my-pipeline-deployment.yaml`). Be sure to replace all <pipeline>, paths, NAMESPACE and 
+PACKAGE/IMAGE placeholders below. It is advised to look at other deployments already on the server.
+
+The PACKAGE is likely to be cherami_dev initially, and the IMAGE is the name of your image created from your branch. 
 
 ### Example Manifest
 
@@ -32,24 +29,24 @@ Create a deployment file (e.g., `my-pipeline-deployment.yaml`). The following ex
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cherami-mscape-amr-runner
+  name: cherami-mscape-<pipeline>-runner
   labels:
-    app: cherami-mscape-amr-runner
+    app: cherami-mscape-<pipeline>-runner
 spec:
   replicas: 1
   strategy:
     type: "Recreate"
   selector:
     matchLabels:
-      app: cherami-mscape-amr-runner
+      app: cherami-mscape-<pipeline>-runner
   template:
     metadata:
-      name: cherami-mscape-amr-runner
+      name: cherami-mscape-<pipeline>-runner
       labels:
-        app: cherami-mscape-amr-runner
+        app: cherami-mscape-<pipeline>-runner
     spec:
-      hostname: cherami-mscape-amr-runner
-      subdomain: ns-pipelinesukhsasy
+      hostname: cherami-mscape-<pipeline>-runner
+      subdomain: ns-<NAMESPACE>
       securityContext:
         runAsUser: 1000
         runAsGroup: 100
@@ -80,28 +77,21 @@ spec:
               readOnly: true
             - mountPath: "/shared/team"
               name: shared-team
-        workingDir: "/shared/team/nxf_work/cherami_amr"
+        workingDir: "/shared/team/nxf_work/<pipeline>"
         env:
-        - name: AWS_ACCESS_KEY_ID
-          value: ""  # FILL THIS IN
-        - name: AWS_SECRET_ACCESS_KEY
-          value: ""  # FILL THIS IN
-        - name: AWS_ENDPOINT_URL
-          value: "https://s3.climb.ac.uk"
-        - name: AWS_REQUEST_CHECKSUM_CALCULATION
-          value: "WHEN_REQUIRED"
-        - name: ONYX_DOMAIN
-          value: "https://onyx.climb.ac.uk"
-        - name: ONYX_TOKEN
-          value: ""  # FILL THIS IN
         - name: K8S_SECRETS_MOUNT
           value: "/run/secrets/kubernetes.io/serviceaccount"
+        envFrom:
+        - secretRef:
+            name: onyx
+        - secretRef:
+            name: aws
 
-        image: ghcr.io/ukhsa-collaboration/cherami:pre-release
+        image: ghcr.io/ukhsa-collaboration/PACKAGE:IMAGE
         args:
             - /bin/sh
             - -c
-            - cherami --log /shared/team/logs/cherami/amr_worker.log --audit_db /shared/team/cherami_outputs/audit_log/log.db serve /shared/team/configs/cherami/synthscape_amr.json
+            - cherami --log <path/to/log_file> --audit_db <path/to/audir_db> serve <path/to/config>
 ```
 
 ## 4. Deployment
