@@ -77,7 +77,6 @@ job*
 *.logs
 
 # configs:
-*config*
 *.yaml
 *.json
 *.conf
